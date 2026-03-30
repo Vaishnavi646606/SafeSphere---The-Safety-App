@@ -1,0 +1,16 @@
+# Android
+android/.gradle/
+android/local.properties
+android/app/build/
+android/.idea/
+android/*.iml
+
+# Next.js
+admin/.next/
+admin/node_modules/
+admin/.env.local
+
+# General
+.DS_Store
+*.log
+Thumbs.db

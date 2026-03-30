@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark mode overrides -->
+    <color name="screenBackground">#121212</color>
+    <color name="inputTextColor">#EEEEEE</color>
+    <color name="inputHintColor">#AAAAAA</color>
+    <color name="titleTextColor">#90CAF9</color>
+    <color name="cardBackground">#1E1E1E</color>
+    <color name="registerButtonSecondaryText">#90CAF9</color>
+    <color name="registerButtonSecondaryBg">#1E1E1E</color>
+
+    <!-- Keep brand colors same in dark mode -->
+    <color name="bluePrimary">#1976D2</color>
+    <color name="blueDark">#0D47A1</color>
+    <color name="accent">#FF4081</color>
+    <color name="white">#FFFFFF</color>
+    <color name="background">#121212</color>
+    <color name="black">#000000</color>
+</resources>

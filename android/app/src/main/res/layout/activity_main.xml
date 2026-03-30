@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_dashboard_screen">
+
+    <View
+        android:id="@+id/topGlow"
+        android:layout_width="240dp"
+        android:layout_height="240dp"
+        android:layout_marginTop="-70dp"
+        android:layout_marginEnd="-60dp"
+        android:background="@drawable/bg_dashboard_glow"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:fillViewport="true"
+        android:paddingStart="20dp"
+        android:paddingTop="46dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="20dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-black"
+                        android:letterSpacing="0.01"
+                        android:text="SafeSphere"
+                        android:textColor="@color/dashboardTitle"
+                        android:textSize="32sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Stay protected with fast emergency actions."
+                        android:textColor="@color/dashboardSubtitle"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
+                <ImageButton
+                    android:id="@+id/btnProfile"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:background="@drawable/bg_dashboard_profile"
+                    android:contentDescription="Profile"
+                    android:padding="14dp"
+                    android:src="@android:drawable/ic_menu_myplaces"
+                    android:tint="@color/dashboardTitle" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/cardProtection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:background="@drawable/bg_dashboard_protection"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="16dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Background Protection"
+                        android:textColor="@color/dashboardTitle"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvProtectionStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="OFF - Tap to activate"
+                        android:textColor="@color/dashboardMuted"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchProtection"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnSosCurrent"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_marginTop="20dp"
+                android:background="@drawable/bg_dashboard_action_primary"
+                android:fontFamily="sans-serif-medium"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="SOS  •  Current Location"
+                android:textAllCaps="false"
+                android:textColor="@color/dashboardActionText"
+                android:textSize="17sp" />
+
+            <Button
+                android:id="@+id/btnSosLive"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_dashboard_action_secondary"
+                android:fontFamily="sans-serif-medium"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="SOS  •  Live Location"
+                android:textAllCaps="false"
+                android:textColor="@color/dashboardActionText"
+                android:textSize="17sp" />
+
+            <Button
+                android:id="@+id/btnSiren"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_dashboard_action_alert"
+                android:fontFamily="sans-serif-medium"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="Siren"
+                android:textAllCaps="false"
+                android:textColor="@color/dashboardActionText"
+                android:textSize="16sp" />
+
+            <Button
+                android:id="@+id/btnFakeCall"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_dashboard_action_fake"
+                android:fontFamily="sans-serif-medium"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="Fake Call"
+                android:textAllCaps="false"
+                android:textColor="@color/dashboardActionText"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/tvHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:background="@drawable/bg_dashboard_hint"
+                android:gravity="center"
+                android:lineSpacingExtra="2dp"
+                android:paddingStart="16dp"
+                android:paddingTop="14dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="14dp"
+                android:text="Turn on Background Protection to keep keyword and shake monitoring active."
+                android:textColor="@color/dashboardHintText"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <LinearLayout
+        android:id="@+id/locationLoadingOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#A6000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ProgressBar
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:indeterminate="true" />
+
+        <TextView
+            android:id="@+id/tvLocationLoading"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="Getting your location..."
+            android:textColor="#FFFFFFFF"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

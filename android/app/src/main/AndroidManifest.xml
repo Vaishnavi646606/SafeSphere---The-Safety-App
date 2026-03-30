@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.safesphere">
+
+    <!-- Permissions -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Analytics Platform -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="true"
+        android:label="SafeSphere"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SafeSphere">
+
+        <!-- 🔹 MAIN LAUNCHER = LOGIN ACTIVITY -->
+        <activity
+            android:name=".LoginActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 🔹 AFTER LOGIN → DASHBOARD -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false" />
+
+        <!-- 🔹 REGISTER SCREEN -->
+        <activity
+            android:name=".RegisterActivity"
+            android:exported="false" />
+
+        <!-- 🔹 PROFILE SCREEN -->
+        <activity
+            android:name=".ProfileActivity"
+            android:exported="false" />
+
+        <!-- 🔹 FAKE CALL -->
+        <activity
+            android:name=".FakeCallActivity"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.SafeSphere.FakeCall"
+            android:exported="false" />
+
+        <!-- 🔹 TRANSPARENT CALL TRAMPOLINE – fires ACTION_CALL from activity context -->
+        <!-- showWhenLocked + turnScreenOn ensures it works on locked screen -->
+        <!-- ISSUE 3 FIX: Added launchMode and more flags for Xiaomi MIUI -->
+        <activity
+            android:name=".CallActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- 🔹 BACKGROUND SERVICE -->
+        <service
+            android:name=".SafeSphereService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="location|microphone" />
+
+        <!-- 🔹 BOOT RECEIVER – restart service after phone reboot -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 🔹 PHONE STATE RECEIVER – survives process death, drives next-contact logic -->
+        <!-- Manifest-registered so Android restarts the process to deliver the broadcast -->
+        <receiver
+            android:name=".PhoneStateReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 🔹 SERVICE RESTART RECEIVER – wakes up the process to restart SafeSphereService -->
+        <!-- Triggered by AlarmManager watchdog and onTaskRemoved/onDestroy -->
+        <receiver
+            android:name=".ServiceRestartReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.safesphere.RESTART_SERVICE" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>

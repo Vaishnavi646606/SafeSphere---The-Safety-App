@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_form_screen"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="60dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="24dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_form_card"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_form_badge"
+                android:paddingStart="12dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="6dp"
+                android:text="PROFILE"
+                android:textColor="@color/dashboardBadgeText"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Profile"
+                android:textColor="@color/dashboardTitle"
+                android:textSize="32sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Update your personal details, emergency keyword, and contact list."
+                android:textColor="@color/dashboardSubtitle"
+                android:textSize="14sp" />
+
+            <EditText
+                android:id="@+id/etName"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="22dp"
+                android:background="@drawable/bg_form_input"
+                android:gravity="center_vertical"
+                android:hint="Your name"
+                android:inputType="textPersonName"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:textColor="@color/dashboardInputText"
+                android:textColorHint="@color/dashboardInputHint"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/etPhone"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_form_input"
+                android:gravity="center_vertical"
+                android:hint="Your mobile number"
+                android:inputType="phone"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:textColor="@color/dashboardInputText"
+                android:textColorHint="@color/dashboardInputHint"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/etKeyword"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_form_input"
+                android:gravity="center_vertical"
+                android:hint="Emergency keyword"
+                android:inputType="text"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:textColor="@color/dashboardInputText"
+                android:textColorHint="@color/dashboardInputHint"
+                android:textSize="16sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="Emergency contacts"
+                android:textColor="@color/dashboardTitle"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/etE1"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_form_input"
+                android:gravity="center_vertical"
+                android:hint="Contact 1"
+                android:inputType="phone"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:textColor="@color/dashboardInputText"
+                android:textColorHint="@color/dashboardInputHint"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/etE2"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_form_input"
+                android:gravity="center_vertical"
+                android:hint="Contact 2"
+                android:inputType="phone"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:textColor="@color/dashboardInputText"
+                android:textColorHint="@color/dashboardInputHint"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/etE3"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_form_input"
+                android:gravity="center_vertical"
+                android:hint="Contact 3"
+                android:inputType="phone"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:textColor="@color/dashboardInputText"
+                android:textColorHint="@color/dashboardInputHint"
+                android:textSize="16sp" />
+
+            <Button
+                android:id="@+id/btnSave"
+                android:layout_width="match_parent"
+                android:layout_height="58dp"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/bg_form_primary_button"
+                android:text="Save"
+                android:textAllCaps="false"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnLogout"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_form_danger_button"
+                android:text="Logout"
+                android:textAllCaps="false"
+                android:textColor="@color/white"
+                android:textSize="15sp" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

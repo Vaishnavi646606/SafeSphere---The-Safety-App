@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SafeSphere" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/bluePrimary</item>
+        <item name="colorPrimaryVariant">@color/blueDark</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+        <item name="colorSecondary">@color/accent</item>
+        <item name="colorOnSecondary">@android:color/white</item>
+        <item name="colorControlActivated">@color/bluePrimary</item>
+        <item name="android:statusBarColor">#1A1A1A</item>
+        <item name="android:navigationBarColor">#1A1A1A</item>
+        <item name="android:windowLightStatusBar">false</item>
+
+        <!-- Dark mode: make text and hints clearly visible -->
+        <item name="android:textColorPrimary">@color/inputTextColor</item>
+        <item name="android:textColorHint">@color/inputHintColor</item>
+        <item name="android:windowBackground">@color/screenBackground</item>
+        <item name="colorControlNormal">@color/inputHintColor</item>
+    </style>
+
+    <!-- FakeCall always black regardless of mode -->
+    <style name="Theme.SafeSphere.FakeCall" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:colorBackground">#111111</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColorPrimary">@android:color/white</item>
+        <item name="android:textColorSecondary">#BBBBBB</item>
+        <item name="colorPrimary">#2E7D32</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+    </style>
+</resources>

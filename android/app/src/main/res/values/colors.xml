@@ -1,0 +1,25 @@
+<resources>
+    <color name="bluePrimary">#1976D2</color>
+    <color name="blueDark">#0D47A1</color>
+    <color name="accent">#FF4081</color>
+    <color name="white">#FFFFFF</color>
+    <color name="background">#F5F9FF</color>
+    <color name="black">#000000</color>
+
+    <!-- Theme-aware colors (light mode values) -->
+    <color name="screenBackground">#F5F9FF</color>
+    <color name="inputTextColor">#212121</color>
+    <color name="inputHintColor">#757575</color>
+    <color name="titleTextColor">#0D47A1</color>
+    <color name="cardBackground">#FFFFFF</color>
+    <color name="registerButtonSecondaryText">#1976D2</color>
+    <color name="registerButtonSecondaryBg">#FFFFFF</color>
+    <color name="dashboardTitle">#102A56</color>
+    <color name="dashboardSubtitle">#5B6C88</color>
+    <color name="dashboardMuted">#6A778A</color>
+    <color name="dashboardActionText">#FFFFFF</color>
+    <color name="dashboardHintText">#27476D</color>
+    <color name="dashboardBadgeText">#1B4F98</color>
+    <color name="dashboardInputText">#132C57</color>
+    <color name="dashboardInputHint">#70829D</color>
+</resources>

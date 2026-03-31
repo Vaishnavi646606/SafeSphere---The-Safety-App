@@ -1,94 +1,140 @@
 package com.example.safesphere;
 
-import android.Manifest;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 
-import com.example.safesphere.analytics.AnalyticsQueue;
-import com.example.safesphere.analytics.EventType;
+import com.example.safesphere.network.SupabaseClient;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import org.json.JSONObject;
+
 import java.util.UUID;
 
 public class RegisterActivity extends AppCompatActivity {
 
-    private static final int REQ_PERMISSION = 141;
-    private List<String> pendingPermissions;
+    private EditText etName;
+    private EditText etPhone;
+    private EditText etKeyword;
+    private EditText etE1;
+    private EditText etE2;
+    private EditText etE3;
+    private Button btnRegister;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_register);
 
-        EditText etName = findViewById(R.id.etRegName);
-        EditText etPhone = findViewById(R.id.etRegPhone);
-        EditText etKeyword = findViewById(R.id.etRegKeyword);
-        EditText etE1 = findViewById(R.id.etRegE1);
-        EditText etE2 = findViewById(R.id.etRegE2);
-        EditText etE3 = findViewById(R.id.etRegE3);
-        Button btnRegister = findViewById(R.id.btnRegister);
+        etName = findViewById(R.id.etRegName);
+        etPhone = findViewById(R.id.etRegPhone);
+        etKeyword = findViewById(R.id.etRegKeyword);
+        etE1 = findViewById(R.id.etRegE1);
+        etE2 = findViewById(R.id.etRegE2);
+        etE3 = findViewById(R.id.etRegE3);
+        btnRegister = findViewById(R.id.btnRegister);
 
-        btnRegister.setOnClickListener(v -> {
-            String name = etName.getText().toString().trim();
-            String phone = etPhone.getText().toString().trim();
-            String keyword = etKeyword.getText().toString().trim();
-            String e1 = etE1.getText().toString().trim();
-            String e2 = etE2.getText().toString().trim();
-            String e3 = etE3.getText().toString().trim();
-
-            if (!validateProfileFields(etName, etPhone, etKeyword, etE1, etE2, etE3,
-                    name, phone, keyword, e1, e2, e3)) {
-                return;
-            }
-
-            Prefs.saveUser(this, name, phone, keyword, e1, e2, e3);
-
-            // ── Analytics: generate user ID and enqueue registration event ──
-            if (Prefs.getUserId(this) == null) {
-                // Generate a stable UUID for this device/user
-                String newUserId = UUID.randomUUID().toString();
-                Prefs.setUserId(this, newUserId);
-            }
-            Map<String, Object> regPayload = new HashMap<>();
-            regPayload.put("name_length", name.length());
-            regPayload.put("has_e1", !e1.isEmpty());
-            regPayload.put("has_e2", !e2.isEmpty());
-            regPayload.put("has_e3", !e3.isEmpty());
-            AnalyticsQueue.get(this).enqueue(EventType.REGISTRATION, null, regPayload);
-
-            Toast.makeText(this, "Registered", Toast.LENGTH_SHORT).show();
-            showWelcomeDialog(name);
-        });
+        btnRegister.setOnClickListener(v -> doRegister());
     }
 
-    private boolean validateProfileFields(
-            EditText etName,
-            EditText etPhone,
-            EditText etKeyword,
-            EditText etE1,
-            EditText etE2,
-            EditText etE3,
-            String name,
-            String phone,
-            String keyword,
-            String e1,
-            String e2,
-            String e3) {
+    private void doRegister() {
+        String name = etName.getText().toString().trim();
+        String phone = etPhone.getText().toString().trim();
+        String keyword = etKeyword.getText().toString().trim();
+        String e1 = etE1.getText().toString().trim();
+        String e2 = etE2.getText().toString().trim();
+        String e3 = etE3.getText().toString().trim();
+
+        if (!validateAllFields(name, phone, keyword, e1, e2, e3)) {
+            return;
+        }
+
+        setLoading(true);
+
+        new Thread(() -> {
+            try {
+                SupabaseClient client = SupabaseClient.getInstance(getApplicationContext());
+                JSONObject existingUser = client.getUserByPhone(phone);
+
+                if (existingUser != null) {
+                    String existingId = existingUser.optString("id", "");
+                    String existingName = existingUser.optString("display_name", "");
+                    if (!existingId.trim().isEmpty()) {
+                        String resolvedName = existingName.trim().isEmpty() ? name : existingName.trim();
+                        persistLocally(existingId, resolvedName, phone, keyword, e1, e2, e3);
+                        runOnUiThread(() -> {
+                            setLoading(false);
+                            Toast.makeText(RegisterActivity.this, "Welcome back, " + resolvedName + "!", Toast.LENGTH_SHORT).show();
+                            goToMain();
+                        });
+                        return;
+                    }
+                }
+
+                String newUserId = UUID.randomUUID().toString();
+                JSONObject userData = new JSONObject();
+                userData.put("id", newUserId);
+                userData.put("display_name", name);
+                userData.put("phone_hash", phone);
+                userData.put("is_active", true);
+                userData.put("device_model", android.os.Build.MODEL);
+                userData.put("android_version", String.valueOf(android.os.Build.VERSION.SDK_INT));
+                userData.put("app_version", BuildConfig.VERSION_NAME);
+                userData.put("os_type", "android");
+                userData.put("total_emergencies", 0);
+                userData.put("keyword", keyword.toLowerCase().trim());
+                userData.put("emergency_contact_1", e1);
+                userData.put("emergency_contact_2", e2);
+                userData.put("emergency_contact_3", e3);
+
+                SupabaseClient.SupabaseResponse response = client.insertRow("users", userData);
+                if (response.success) {
+                    persistLocally(newUserId, name, phone, keyword, e1, e2, e3);
+                    runOnUiThread(() -> {
+                        setLoading(false);
+                        goToMain();
+                    });
+                    return;
+                }
+
+                JSONObject fallbackUser = client.getUserByPhone(phone);
+                if (fallbackUser != null) {
+                    String fallbackId = fallbackUser.optString("id", "");
+                    String fallbackName = fallbackUser.optString("display_name", "");
+                    if (!fallbackId.trim().isEmpty()) {
+                        String resolvedName = fallbackName.trim().isEmpty() ? name : fallbackName.trim();
+                        persistLocally(fallbackId, resolvedName, phone, keyword, e1, e2, e3);
+                        runOnUiThread(() -> {
+                            setLoading(false);
+                            goToMain();
+                        });
+                        return;
+                    }
+                }
+
+                runOnUiThread(() -> {
+                    setLoading(false);
+                    Toast.makeText(RegisterActivity.this,
+                            "Registration failed. Check your connection and try again.",
+                            Toast.LENGTH_LONG).show();
+                });
+            } catch (Exception e) {
+                android.util.Log.w("SafeSphere_REG", "Registration failed", e);
+                runOnUiThread(() -> {
+                    setLoading(false);
+                    Toast.makeText(RegisterActivity.this,
+                            "Registration failed. Check your connection and try again.",
+                            Toast.LENGTH_LONG).show();
+                });
+            }
+        }).start();
+    }
+
+    private boolean validateAllFields(String name, String phone, String keyword, String e1, String e2, String e3) {
         if (TextUtils.isEmpty(name)) {
             etName.setError("Enter your name");
             etName.requestFocus();
@@ -104,18 +150,28 @@ public class RegisterActivity extends AppCompatActivity {
             etKeyword.requestFocus();
             return false;
         }
+        if (keyword.length() < 3) {
+            etKeyword.setError("Keyword must be at least 3 letters");
+            etKeyword.requestFocus();
+            return false;
+        }
+        if (!keyword.matches("[a-zA-Z]+")) {
+            etKeyword.setError("Keyword must contain letters only");
+            etKeyword.requestFocus();
+            return false;
+        }
         if (!isValidPhone(e1)) {
-            etE1.setError("Contact 1 is required and must be 10 digits");
+            etE1.setError("Contact 1 must be a valid 10-digit mobile number");
             etE1.requestFocus();
             return false;
         }
         if (!isValidPhone(e2)) {
-            etE2.setError("Contact 2 is required and must be 10 digits");
+            etE2.setError("Contact 2 must be a valid 10-digit mobile number");
             etE2.requestFocus();
             return false;
         }
         if (!isValidPhone(e3)) {
-            etE3.setError("Contact 3 is required and must be 10 digits");
+            etE3.setError("Contact 3 must be a valid 10-digit mobile number");
             etE3.requestFocus();
             return false;
         }
@@ -126,62 +182,26 @@ public class RegisterActivity extends AppCompatActivity {
         return value != null && value.matches("\\d{10}");
     }
 
-    private void showWelcomeDialog(String name) {
-        new AlertDialog.Builder(this)
-                .setTitle("Welcome to SafeSphere, " + name + "!")
-                .setMessage("To work properly and keep you safe, SafeSphere needs a few permissions.\n\nPlease allow them when asked — this helps the app send emergency alerts, detect your keyword, and share your location with your trusted contacts.")
-                .setCancelable(false)
-                .setPositiveButton("OK, Let's Go", (dialog, which) -> startSequentialPermissions())
-                .show();
+    private void persistLocally(String userId, String name, String phone, String keyword, String e1, String e2, String e3) {
+        Prefs.setSupabaseUserId(getApplicationContext(), userId);
+        Prefs.setUserName(getApplicationContext(), name);
+        Prefs.setUserPhone(getApplicationContext(), phone);
+        Prefs.setKeyword(getApplicationContext(), keyword);
+        Prefs.setEmergency1(getApplicationContext(), e1);
+        Prefs.setEmergency2(getApplicationContext(), e2);
+        Prefs.setEmergency3(getApplicationContext(), e3);
+        Prefs.setLoggedIn(getApplicationContext(), true);
     }
 
-    private void startSequentialPermissions() {
-        pendingPermissions = new ArrayList<>();
-        pendingPermissions.add(Manifest.permission.RECORD_AUDIO);
-        pendingPermissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
-        pendingPermissions.add(Manifest.permission.SEND_SMS);
-        pendingPermissions.add(Manifest.permission.CALL_PHONE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            pendingPermissions.add(Manifest.permission.ANSWER_PHONE_CALLS);
-        }
-        pendingPermissions.add(Manifest.permission.READ_PHONE_STATE);
-        pendingPermissions.add(Manifest.permission.READ_CALL_LOG);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            pendingPermissions.add(Manifest.permission.ACCESS_BACKGROUND_LOCATION);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pendingPermissions.add(Manifest.permission.POST_NOTIFICATIONS);
-        }
-        requestNextPermission();
-    }
-
-    private void requestNextPermission() {
-        while (!pendingPermissions.isEmpty()) {
-            String perm = pendingPermissions.get(0);
-            if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{perm}, REQ_PERMISSION);
-                return;
-            }
-            pendingPermissions.remove(0);
-        }
-        goToMain();
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_PERMISSION) {
-            if (!pendingPermissions.isEmpty()) {
-                pendingPermissions.remove(0);
-            }
-            requestNextPermission();
-        }
+    private void setLoading(boolean loading) {
+        btnRegister.setEnabled(!loading);
+        btnRegister.setText(loading ? "Please wait..." : "Create Account");
+        btnRegister.setBackgroundTintList(
+            android.content.res.ColorStateList.valueOf(
+                android.graphics.Color.parseColor("#C2185B")));
     }
 
     private void goToMain() {
-        Prefs.setCompletedPermissionSetup(this, true);
         Intent i = new Intent(this, MainActivity.class);
         i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(i);

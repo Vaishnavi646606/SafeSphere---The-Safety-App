@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const serviceClient = createServiceClient()
   let query = serviceClient
     .from('emergency_feedback')
-    .select('*')
+    .select('*, users(display_name, phone_hash)')
     .order('created_at', { ascending: false })
     .limit(200)
 

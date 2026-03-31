@@ -1,5 +1,6 @@
 package com.example.safesphere;
 
+import android.content.res.ColorStateList;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
@@ -10,6 +11,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 
 import com.example.safesphere.network.SupabaseClient;
 
@@ -57,6 +59,10 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
     private boolean wasRealEmergency = false;
     private boolean wasRescued = false;
     private int rating = 0;
+
+    private interface ResolveCallback {
+        void onResult(boolean success);
+    }
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,14 +71,32 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
         
         // Get extras from intent
         Intent intent = getIntent();
-        eventId = intent.getStringExtra(EXTRA_EVENT_ID);
+        String eventId = getIntent().getStringExtra("event_id");
+        this.eventId = eventId;
         userId = intent.getStringExtra(EXTRA_USER_ID);
         triggerType = intent.getStringExtra(EXTRA_TRIGGER_TYPE);
+
+        if (eventId == null || eventId.trim().isEmpty()) {
+            eventId = Prefs.getLastEmergencyEventId(this);
+            this.eventId = eventId;
+        }
+        if (userId == null || userId.trim().isEmpty()) {
+            userId = Prefs.getSupabaseUserId(this);
+        }
         
-        if (eventId == null || userId == null) {
-            Log.e(TAG, "Missing required intent extras");
+        if (eventId == null || eventId.trim().isEmpty()) {
+            Toast.makeText(this, "No emergency event to provide feedback for", Toast.LENGTH_LONG).show();
+            Log.e(TAG, "Missing event_id for feedback");
             finish();
             return;
+        }
+
+        if (userId == null || userId.trim().isEmpty()) {
+            resolveUserIdIfMissing(success -> {
+                if (!success) {
+                    Log.w(TAG, "Unable to resolve user_id on feedback open");
+                }
+            });
         }
         
         initializeUI();
@@ -97,30 +121,46 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
         // Set question 1 listeners
         btnRealYes.setOnClickListener(v -> {
             wasRealEmergency = true;
-            btnRealYes.setbackgroundColor(getColor(R.color.primary));
-            btnRealNo.setBackgroundColor(getColor(R.color.gray_light));
+            btnRealYes.setBackgroundTintList(
+                ColorStateList.valueOf(ContextCompat.getColor(this, R.color.primary))
+            );
+            btnRealNo.setBackgroundTintList(
+                ColorStateList.valueOf(ContextCompat.getColor(this, R.color.gray_light))
+            );
             updateSubmitButtonState();
         });
         
         btnRealNo.setOnClickListener(v -> {
             wasRealEmergency = false;
-            btnRealNo.setBackgroundColor(getColor(R.color.primary));
-            btnRealYes.setBackgroundColor(getColor(R.color.gray_light));
+            btnRealNo.setBackgroundTintList(
+                ColorStateList.valueOf(ContextCompat.getColor(this, R.color.primary))
+            );
+            btnRealYes.setBackgroundTintList(
+                ColorStateList.valueOf(ContextCompat.getColor(this, R.color.gray_light))
+            );
             updateSubmitButtonState();
         });
         
         // Set question 2 listeners
         btnRescuedYes.setOnClickListener(v -> {
             wasRescued = true;
-            btnRescuedYes.setBackgroundColor(getColor(R.color.primary));
-            btnRescuedNo.setBackgroundColor(getColor(R.color.gray_light));
+            btnRescuedYes.setBackgroundTintList(
+                ColorStateList.valueOf(ContextCompat.getColor(this, R.color.primary))
+            );
+            btnRescuedNo.setBackgroundTintList(
+                ColorStateList.valueOf(ContextCompat.getColor(this, R.color.gray_light))
+            );
             updateSubmitButtonState();
         });
         
         btnRescuedNo.setOnClickListener(v -> {
             wasRescued = false;
-            btnRescuedNo.setBackgroundColor(getColor(R.color.primary));
-            btnRescuedYes.setBackgroundColor(getColor(R.color.gray_light));
+            btnRescuedNo.setBackgroundTintList(
+                ColorStateList.valueOf(ContextCompat.getColor(this, R.color.primary))
+            );
+            btnRescuedYes.setBackgroundTintList(
+                ColorStateList.valueOf(ContextCompat.getColor(this, R.color.gray_light))
+            );
             updateSubmitButtonState();
         });
         
@@ -148,8 +188,25 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
             Toast.makeText(this, "Please select a rating", Toast.LENGTH_SHORT).show();
             return;
         }
+
+        if (eventId == null || eventId.trim().isEmpty()) {
+            Toast.makeText(this, "No emergency event to provide feedback for", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        if (userId == null || userId.trim().isEmpty()) {
+            resolveUserIdIfMissing(success -> {
+                if (success) {
+                    submitFeedback();
+                } else {
+                    Toast.makeText(this, "Unable to resolve account for feedback", Toast.LENGTH_LONG).show();
+                }
+            });
+            return;
+        }
         
         String feedbackText = etFeedback.getText().toString().trim();
+        Log.d("EmergencyFeedback", "Submitting feedback for eventId: " + eventId);
         
         // Create feedback data
         SupabaseClient.EmergencyFeedbackData feedbackData = new SupabaseClient.EmergencyFeedbackData();
@@ -184,6 +241,40 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
                 runOnUiThread(() -> Toast.makeText(EmergencyFeedbackActivity.this,
                         "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
             }
+        }).start();
+    }
+
+    private void resolveUserIdIfMissing(ResolveCallback callback) {
+        if (userId != null && !userId.trim().isEmpty()) {
+            callback.onResult(true);
+            return;
+        }
+
+        final String phone = Prefs.getUserPhone(this);
+        if (phone == null || phone.trim().isEmpty()) {
+            callback.onResult(false);
+            return;
+        }
+
+        new Thread(() -> {
+            boolean success = false;
+            try {
+                SupabaseClient client = SupabaseClient.getInstance(getApplicationContext());
+                org.json.JSONObject user = client.getUserByPhone(phone);
+                if (user != null) {
+                    String resolvedId = user.optString("id", null);
+                    if (resolvedId != null && !resolvedId.trim().isEmpty()) {
+                        userId = resolvedId;
+                        Prefs.setSupabaseUserId(getApplicationContext(), resolvedId);
+                        success = true;
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to resolve user_id for feedback", e);
+            }
+
+            final boolean result = success;
+            runOnUiThread(() -> callback.onResult(result));
         }).start();
     }
     

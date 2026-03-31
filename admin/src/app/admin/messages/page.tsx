@@ -7,12 +7,10 @@ interface Message {
   id: string
   subject: string
   body: string
-  message_type: string
   is_critical: boolean
-  sent_at: string
-  fetched_at: string | null
-  acknowledged_at: string | null
-  target_name?: string
+  created_at: string
+  recipient_count: number
+  delivered_count: number
 }
 
 export default function MessagesPage() {
@@ -39,7 +37,7 @@ export default function MessagesPage() {
     setSending(true)
     setSendResult('')
     try {
-      const res = await fetch('/api/admin/send-message', {
+      const res = await fetch('/api/admin/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -101,33 +99,25 @@ export default function MessagesPage() {
             <thead className="border-b border-white/5 bg-[#0f0f16] text-left text-xs uppercase tracking-wider text-gray-400">
               <tr>
                 <th className="px-5 py-4">Date</th>
-                <th className="px-5 py-4">Type</th>
                 <th className="px-5 py-4">Subject</th>
                 <th className="px-5 py-4">Body</th>
                 <th className="px-5 py-4">Critical</th>
                 <th className="px-5 py-4">Delivered</th>
-                <th className="px-5 py-4">Ack&apos;d</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-500">Loading...</td></tr>
+                <tr><td colSpan={5} className="px-5 py-10 text-center text-gray-500">Loading...</td></tr>
               ) : messages.length === 0 ? (
-                <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-500">No messages sent yet.</td></tr>
+                <tr><td colSpan={5} className="px-5 py-10 text-center text-gray-500">No messages sent yet.</td></tr>
               ) : (
                 messages.map((msg) => (
                   <tr key={msg.id} className="border-b border-white/5 last:border-b-0 hover:bg-white/2">
-                    <td className="px-5 py-4 text-gray-300">{new Date(msg.sent_at).toLocaleDateString('en-IN')}</td>
-                    <td className="px-5 py-4">
-                      <span className={`inline-flex rounded-xl border px-2.5 py-1 text-xs ${msg.message_type === 'removal' ? 'border-rose-500/20 bg-rose-500/10 text-rose-300' : msg.message_type === 'warning' ? 'border-amber-500/20 bg-amber-500/10 text-amber-300' : 'border-sky-500/20 bg-sky-500/10 text-sky-300'}`}>
-                        {msg.message_type}
-                      </span>
-                    </td>
+                    <td className="px-5 py-4 text-gray-300">{new Date(msg.created_at).toLocaleDateString('en-IN')}</td>
                     <td className="max-w-55 truncate px-5 py-4 font-medium text-gray-100">{msg.subject}</td>
                     <td className="max-w-65 truncate px-5 py-4 text-gray-400">{msg.body}</td>
                     <td className="px-5 py-4 text-center text-gray-300">{msg.is_critical ? 'Yes' : 'No'}</td>
-                    <td className="px-5 py-4 text-center text-gray-300">{msg.fetched_at ? 'Yes' : 'Pending'}</td>
-                    <td className="px-5 py-4 text-center text-gray-300">{msg.acknowledged_at ? 'Yes' : '—'}</td>
+                    <td className="px-5 py-4 text-center text-gray-300">{msg.delivered_count}/{msg.recipient_count}</td>
                   </tr>
                 ))
               )}

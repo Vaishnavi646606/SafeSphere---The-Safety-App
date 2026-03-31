@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ChevronDown, ChevronUp, RefreshCw, Search } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
@@ -230,8 +230,8 @@ export default function IncidentsPage() {
                 {filteredIncidents.map((incident) => {
                   const isExpanded = expandedId === incident.id
                   return (
-                    <>
-                      <tr key={incident.id} className="border-b border-white/5 text-sm hover:bg-white/[0.02]">
+                    <Fragment key={incident.id}>
+                      <tr className="border-b border-white/5 text-sm hover:bg-white/[0.02]">
                         <td className="whitespace-nowrap px-4 py-3 text-slate-300">{formatDate(incident.triggered_at)}</td>
                         <td className="px-4 py-3">
                           <p className="text-slate-100">{incident.users?.display_name || 'Unknown'}</p>
@@ -436,7 +436,7 @@ export default function IncidentsPage() {
                           </td>
                         </tr>
                       ) : null}
-                    </>
+                    </Fragment>
                   )
                 })}
               </tbody>

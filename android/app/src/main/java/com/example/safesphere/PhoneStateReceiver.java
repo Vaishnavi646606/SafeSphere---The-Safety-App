@@ -152,6 +152,13 @@ public class PhoneStateReceiver extends BroadcastReceiver {
 
                 if (nextIndex >= numbers.length) {
                     Log.d(TAG, "All contacts tried – sequence complete");
+                    String feedbackEventId = Prefs.getLastEmergencyEventId(context);
+                    if (feedbackEventId != null && !feedbackEventId.trim().isEmpty()) {
+                        EmergencyManager.showFeedbackNotification(context, feedbackEventId);
+                    } else {
+                        android.util.Log.w("PHONE_STATE_RCV",
+                                "Cannot show feedback notification: no event ID in Prefs");
+                    }
                     clearState(context);
                     return;
                 }

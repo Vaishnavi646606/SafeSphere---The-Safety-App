@@ -7,6 +7,10 @@ interface Feedback {
   id: string
   event_id: string
   user_id: string
+  users?: {
+    display_name: string
+    phone_hash: string
+  }
   was_real_emergency: boolean
   was_rescued_or_helped: boolean
   rating: number
@@ -183,7 +187,14 @@ export default function FeedbackPage() {
               <div key={item.id}>
                 <div className="flex items-center gap-4 px-5 py-3.5 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
                   <div className="w-44 text-sm text-gray-300">{formatDate(item.submitted_at || item.created_at)}</div>
-                  <div className="w-32 font-mono text-xs text-gray-400">{item.user_id.slice(0, 8)}...</div>
+                  <div className="w-32">
+                    <div className="text-sm text-gray-300">{item.users?.display_name || 'Unknown'}</div>
+                    <div className="text-xs text-gray-500">
+                      {item.users?.phone_hash 
+                        ? item.users.phone_hash.slice(0, 6) + '****'
+                        : 'N/A'}
+                    </div>
+                  </div>
                   <div className="w-28">{renderStars(item.rating)}</div>
                   <div className="w-32">
                     {item.was_real_emergency ? (

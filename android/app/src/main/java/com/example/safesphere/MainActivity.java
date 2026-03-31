@@ -34,19 +34,7 @@ import androidx.core.content.ContextCompat;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
-
-import androidx.work.Constraints;
-import androidx.work.ExistingPeriodicWorkPolicy;
-import androidx.work.NetworkType;
-import androidx.work.PeriodicWorkRequest;
-import androidx.work.WorkManager;
-
-import com.example.safesphere.analytics.AnalyticsQueue;
-import com.example.safesphere.analytics.EventType;
-import com.example.safesphere.revocation.RevocationCheckWorker;
-import com.example.safesphere.revocation.RevocationHandler;
-import com.example.safesphere.sync.AnalyticsSyncWorker;
+import com.example.safesphere.network.SupabaseClient;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -70,6 +58,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean suppressSwitchListener = false;
     private View locationLoadingOverlay;
     private TextView tvLocationLoading;
+    private final List<String> pendingPermissions = new ArrayList<>();
 
     // Receives keyword/shake detection broadcast from SafeSphereService
     private final BroadcastReceiver emergencyReceiver = new BroadcastReceiver() {
@@ -98,16 +87,27 @@ public class MainActivity extends AppCompatActivity {
         
         // Check if user is logged in
         if (!Prefs.isLoggedIn(this)) {
+            try {
+                stopService(new Intent(this, SafeSphereService.class));
+            } catch (Exception ignored) {}
             startActivity(new Intent(this, LoginActivity.class));
             finish();
             return;
         }
 
-        // ── Analytics: schedule background workers on first launch ──
-        scheduleAnalyticsWorkers();
+        resolveSupabaseUserIdIfMissing();
 
-        // Track login/foreground event
-        AnalyticsQueue.get(this).enqueue(EventType.APP_FOREGROUNDED);
+        // Check if profile setup is needed
+        if (Prefs.needsProfileSetup(this)) {
+            Prefs.setNeedsProfileSetup(this, false);
+            Toast.makeText(this,
+                "Please complete your profile — add keyword and emergency contacts.",
+                Toast.LENGTH_LONG).show();
+            Intent profileIntent = new Intent(this, ProfileActivity.class);
+            profileIntent.putExtra("setup_required", true);
+            startActivity(profileIntent);
+            return;
+        }
 
         setContentView(R.layout.activity_main);
 
@@ -129,6 +129,12 @@ public class MainActivity extends AppCompatActivity {
             Prefs.setProtectionEnabled(this, isChecked);
             updateProtectionUI(isChecked);
             if (isChecked) {
+                List<String> missing = getMissingPermissions();
+                if (!missing.isEmpty()) {
+                    Toast.makeText(this,
+                            "Some permissions missing. Emergency features may be limited. Grant them in Settings.",
+                            Toast.LENGTH_LONG).show();
+                }
                 requestBatteryOptimizationExemption();
                 startSafeSphereService();
                 Toast.makeText(this,
@@ -141,6 +147,8 @@ public class MainActivity extends AppCompatActivity {
                         Toast.LENGTH_SHORT).show();
             }
         });
+
+        handleRuntimePermissionsOnEntry();
 
         // Show a one-time informational dialog that tells the user which settings to
         // enable manually. Delayed 600 ms so the system permission dialog above has
@@ -169,11 +177,23 @@ public class MainActivity extends AppCompatActivity {
         // ---------- CLICK LISTENERS ----------
 
         btnSosCurrent.setOnClickListener(v -> {
-            if (ensurePermissions()) shareLocation(false);
+            if (hasAllRequiredPermissions()) {
+                shareLocation(false);
+            } else {
+                Toast.makeText(this,
+                        "Permissions are still missing. Please complete permission setup first.",
+                        Toast.LENGTH_LONG).show();
+            }
         });
 
         btnSosLive.setOnClickListener(v -> {
-            if (ensurePermissions()) shareLocation(true);
+            if (hasAllRequiredPermissions()) {
+                shareLocation(true);
+            } else {
+                Toast.makeText(this,
+                        "Permissions are still missing. Please complete permission setup first.",
+                        Toast.LENGTH_LONG).show();
+            }
         });
 
         btnSiren.setOnClickListener(v -> toggleSiren());
@@ -189,17 +209,19 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
 
-        // ── Analytics: check for pending revocation ──
-        if (RevocationHandler.isPendingRevocation(this)) {
+        if (Prefs.isPendingRevocation(this)) {
             String msg = Prefs.getRevocationMessage(this);
-            new android.app.AlertDialog.Builder(this)
+            new AlertDialog.Builder(this)
                 .setTitle("Account Removed")
                 .setMessage(msg != null ? msg : "Your account has been removed from SafeSphere.")
                 .setCancelable(false)
                 .setPositiveButton("OK", (d, w) -> {
-                    RevocationHandler.performLogout(this);
-                    startActivity(new Intent(this, LoginActivity.class)
-                        .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+                    Prefs.setLoggedIn(getApplicationContext(), false);
+                    Prefs.setSupabaseUserId(getApplicationContext(), null);
+                    Prefs.setPendingRevocation(getApplicationContext(), false);
+                    Intent intent = new Intent(this, LoginActivity.class);
+                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    startActivity(intent);
                     finish();
                 })
                 .show();
@@ -223,7 +245,6 @@ public class MainActivity extends AppCompatActivity {
                         .setPositiveButton("OK", null)
                         .show();
                 }
-                AnalyticsQueue.get(this).enqueue(EventType.ADMIN_MSG_RECEIVED, null);
             }
         } catch (Exception ignored) {}
 
@@ -247,6 +268,7 @@ public class MainActivity extends AppCompatActivity {
 
         registerLocationModeReceiver();
         refreshLastKnownLocationSilently();
+        resolveSupabaseUserIdIfMissing();
 
         if (waitingForLocationEnable) {
             waitingForLocationEnable = false;
@@ -399,6 +421,40 @@ public class MainActivity extends AppCompatActivity {
         locationReceiverRegistered = true;
     }
 
+    private void resolveSupabaseUserIdIfMissing() {
+        String userId = Prefs.getSupabaseUserId(this);
+        if (userId != null && !userId.trim().isEmpty()) {
+            android.util.Log.d("MainActivity", "resolveSupabaseUserIdIfMissing: ID already present: " + userId);
+            return;
+        }
+
+        final String phone = Prefs.getUserPhone(this);
+        if (phone == null || phone.trim().isEmpty()) {
+            android.util.Log.w("MainActivity", "resolveSupabaseUserIdIfMissing: No saved phone found");
+            return;
+        }
+
+        android.util.Log.d("MainActivity", "resolveSupabaseUserIdIfMissing: Looking up user by phone: " + phone);
+        new Thread(() -> {
+            try {
+                SupabaseClient client = SupabaseClient.getInstance(getApplicationContext());
+                org.json.JSONObject user = client.getUserByPhone(phone);
+                if (user != null) {
+                    String resolvedId = user.optString("id", null);
+                    android.util.Log.d("MainActivity", "resolveSupabaseUserIdIfMissing: Found user with ID: " + resolvedId);
+                    if (resolvedId != null && !resolvedId.trim().isEmpty()) {
+                        Prefs.setSupabaseUserId(getApplicationContext(), resolvedId);
+                        android.util.Log.d("MainActivity", "Resolved and stored Supabase user_id: " + resolvedId);
+                    }
+                } else {
+                    android.util.Log.w("MainActivity", "resolveSupabaseUserIdIfMissing: getUserByPhone returned NULL for phone: " + phone);
+                }
+            } catch (Exception e) {
+                android.util.Log.w("MainActivity", "Failed to resolve Supabase user_id", e);
+            }
+        }).start();
+    }
+
     private boolean isUsableMapsLink(String locationText) {
         return locationText != null && locationText.startsWith("https://maps.google.com/?q=");
     }
@@ -440,46 +496,93 @@ public class MainActivity extends AppCompatActivity {
 
     // ---------- PERMISSIONS + SERVICE ----------
 
-    /**
-     * SMS + CALL + LOCATION + MIC + PHONE_STATE permissions check karega.
-     * Agar kuch missing ho to request karega.
-     * Sab mil gaye to background service start karega.
-     */
-    private boolean ensurePermissions() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            // Old devices – direct start
-            startSafeSphereService();
-            return true;
+    private void handleRuntimePermissionsOnEntry() {
+        List<String> missing = getMissingPermissions();
+        if (missing.isEmpty()) {
+            onAllPermissionsHandled();
+            return;
         }
 
-        String[] needed = new String[]{
+        pendingPermissions.clear();
+        pendingPermissions.addAll(missing);
+        showPermissionExplanationDialog(pendingPermissions.size());
+    }
+
+    private boolean hasAllRequiredPermissions() {
+        return getMissingPermissions().isEmpty();
+    }
+
+    private List<String> getMissingPermissions() {
+        List<String> missing = new ArrayList<>();
+
+        String[] required = new String[]{
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.SEND_SMS,
                 Manifest.permission.CALL_PHONE,
-            Manifest.permission.ANSWER_PHONE_CALLS,
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.READ_PHONE_STATE,
-            Manifest.permission.READ_CALL_LOG
+                Manifest.permission.READ_PHONE_STATE,
+                Manifest.permission.READ_CALL_LOG
         };
 
-        List<String> toRequest = new ArrayList<>();
-        for (String p : needed) {
-            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
-                toRequest.add(p);
+        for (String perm : required) {
+            if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
+                missing.add(perm);
             }
         }
 
-        if (!toRequest.isEmpty()) {
-            Toast.makeText(this,
-                    "Permission missing. Some features may not work properly.",
-                    Toast.LENGTH_LONG).show();
-            return false;
-        } else {
-            // Sab permissions mil chuki hain → service ensure karo
-            startSafeSphereService();
-            return true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.ANSWER_PHONE_CALLS)
+                != PackageManager.PERMISSION_GRANTED) {
+            missing.add(Manifest.permission.ANSWER_PHONE_CALLS);
         }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            missing.add(Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            missing.add(Manifest.permission.POST_NOTIFICATIONS);
+        }
+
+        return missing;
+    }
+
+    private void showPermissionExplanationDialog(int count) {
+        if (count <= 0) {
+            onAllPermissionsHandled();
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Permissions Required")
+                .setMessage("SafeSphere needs " + count + " missing permission(s) to run emergency detection, calling, SMS, and alerts correctly.")
+                .setCancelable(false)
+                .setPositiveButton("Continue", (dialog, which) -> requestNextMissingPermission())
+                .show();
+    }
+
+    private void requestNextMissingPermission() {
+        while (!pendingPermissions.isEmpty()) {
+            String perm = pendingPermissions.get(0);
+            if (ContextCompat.checkSelfPermission(this, perm) == PackageManager.PERMISSION_GRANTED) {
+                pendingPermissions.remove(0);
+                continue;
+            }
+
+            ActivityCompat.requestPermissions(this, new String[]{perm}, REQ_PERMISSIONS);
+            return;
+        }
+
+        onAllPermissionsHandled();
+    }
+
+    private void onAllPermissionsHandled() {
+        Prefs.setCompletedPermissionSetup(this, true);
+        startSafeSphereService();
     }
 
     /**
@@ -503,22 +606,16 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         if (requestCode == REQ_PERMISSIONS) {
-            boolean allGranted = true;
-            for (int res : grantResults) {
-                if (res != PackageManager.PERMISSION_GRANTED) {
-                    allGranted = false;
-                    break;
+            if (permissions.length > 0) {
+                String handledPermission = permissions[0];
+                if (!pendingPermissions.isEmpty() && pendingPermissions.get(0).equals(handledPermission)) {
+                    pendingPermissions.remove(0);
+                } else {
+                    pendingPermissions.remove(handledPermission);
                 }
             }
 
-            if (allGranted) {
-                Toast.makeText(this, "Permissions granted for SOS & keyword.", Toast.LENGTH_SHORT).show();
-                startSafeSphereService();
-            } else {
-                Toast.makeText(this,
-                        "Some permissions denied. Share & keyword features may be limited.",
-                        Toast.LENGTH_LONG).show();
-            }
+            requestNextMissingPermission();
         }
     }
 
@@ -558,31 +655,6 @@ public class MainActivity extends AppCompatActivity {
             sirenPlayer.release();
             sirenPlayer = null;
         }
-    }
-
-    /** Schedule analytics sync + revocation check as periodic background workers. */
-    private void scheduleAnalyticsWorkers() {
-        Constraints netConstraints = new Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build();
-
-        // Analytics sync — every 15 min when online
-        PeriodicWorkRequest syncWork = new PeriodicWorkRequest.Builder(
-                AnalyticsSyncWorker.class, 15, TimeUnit.MINUTES)
-                .setConstraints(netConstraints)
-                .addTag("analytics_sync")
-                .build();
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-                "analytics_sync", ExistingPeriodicWorkPolicy.KEEP, syncWork);
-
-        // Revocation check — every 15 min (no network constraint so it still polls offline→shows cached)
-        PeriodicWorkRequest revocationWork = new PeriodicWorkRequest.Builder(
-                RevocationCheckWorker.class, 15, TimeUnit.MINUTES)
-                .setConstraints(netConstraints)
-                .addTag("revocation_check")
-                .build();
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-                "revocation_check", ExistingPeriodicWorkPolicy.KEEP, revocationWork);
     }
 
     @Override
@@ -628,27 +700,13 @@ public class MainActivity extends AppCompatActivity {
     private void requestBatteryOptimizationExemption() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
         if (Prefs.hasShownBatteryOptimizationPromptOnce(this)) return;
-
-        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-        if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
-            Prefs.setShownBatteryOptimizationPromptOnce(this, true);
-            try {
-                Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                i.setData(Uri.parse("package:" + getPackageName()));
-                startActivity(i);
-            } catch (Exception e) {
-                // Some OEMs block this intent — fall back to app settings page
-                try {
-                    Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-                    i.setData(Uri.parse("package:" + getPackageName()));
-                    startActivity(i);
-                    Toast.makeText(this,
-                            "Go to Battery → Remove restrictions, then enable Autostart.",
-                            Toast.LENGTH_LONG).show();
-                } catch (Exception ignored) {}
-            }
-        } else {
-            Prefs.setShownBatteryOptimizationPromptOnce(this, true);
+        Prefs.setShownBatteryOptimizationPromptOnce(this, true);
+        try {
+            Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            i.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(i);
+        } catch (Exception ignored) {
+            // Vivo and some OEMs block this intent — silently ignore
         }
     }
 

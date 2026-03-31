@@ -73,11 +73,13 @@
                 android:layout_height="58dp"
                 android:layout_marginTop="22dp"
                 android:background="@drawable/bg_form_primary_button"
+                android:backgroundTint="#C2185B"
                 android:text="Login"
                 android:textAllCaps="false"
                 android:textColor="@color/white"
                 android:textSize="16sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:visibility="visible" />
 
             <Button
                 android:id="@+id/btnGoRegister"
@@ -85,10 +87,12 @@
                 android:layout_height="56dp"
                 android:layout_marginTop="12dp"
                 android:background="@drawable/bg_form_secondary_button"
+                android:backgroundTint="#880E4F"
                 android:text="New user? Register"
                 android:textAllCaps="false"
-                android:textColor="@color/dashboardTitle"
-                android:textSize="15sp" />
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:visibility="visible" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

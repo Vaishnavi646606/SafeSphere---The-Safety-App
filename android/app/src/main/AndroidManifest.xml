@@ -59,6 +59,11 @@
             android:name=".ProfileActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".EmergencyFeedbackActivity"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+
         <!-- 🔹 FAKE CALL -->
         <activity
             android:name=".FakeCallActivity"

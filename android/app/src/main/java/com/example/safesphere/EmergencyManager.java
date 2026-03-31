@@ -37,12 +37,23 @@ import androidx.core.content.ContextCompat;
 
 import com.example.safesphere.analytics.AnalyticsQueue;
 import com.example.safesphere.analytics.EventType;
+import com.example.safesphere.network.SupabaseClient;
+
+import org.json.JSONObject;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
+import java.util.UUID;
 
 public class EmergencyManager {
 
     private static final String TAG             = "EMERGENCY";
     private static final String CALL_CHANNEL_ID = "safesphere_call";
+    private static final String FEEDBACK_CHANNEL_ID = "safesphere_feedback";
     private static final int    CALL_NOTIF_BASE = 2000;
+    private static final int    FEEDBACK_NOTIF_ID = 3401;
     private static final String FLOW = "FLOW";
 
     private static String[] currentNumbers;
@@ -131,7 +142,7 @@ public class EmergencyManager {
         AnalyticsQueue.get(ctx).enqueue(EventType.TRIGGER_SOURCE, sid, triggerPayload);
 
         // Run on main thread — SmsManager on Android 12+ requires main thread
-        new Handler(Looper.getMainLooper()).post(() -> sendEmergency(ctx.getApplicationContext(), true));
+        new Handler(Looper.getMainLooper()).post(() -> sendEmergency(ctx.getApplicationContext(), true, "LIVE"));
     }
 
     public static void triggerEmergencyCurrent(Context ctx) {
@@ -145,7 +156,7 @@ public class EmergencyManager {
         AnalyticsQueue.get(ctx).enqueue(EventType.TRIGGER_SOURCE, sid, triggerPayload);
 
         liveHandler.removeCallbacksAndMessages(null);
-        sendEmergency(ctx.getApplicationContext(), false);
+        sendEmergency(ctx.getApplicationContext(), false, "CURRENT");
     }
 
     private static String detectTriggerCaller() {
@@ -177,7 +188,7 @@ public class EmergencyManager {
     //  CORE SEND
     // ================================================================
 
-    private static void sendEmergency(Context ctx, boolean liveMode) {
+    private static void sendEmergency(Context ctx, boolean liveMode, String triggerType) {
         Log.d(TAG, "╔═══════════════════════════════════════════════════╗");
         Log.d(TAG, "║         sendEmergency() START                     ║");
         Log.d(TAG, "║         liveMode=" + liveMode + "                              ║");
@@ -191,6 +202,63 @@ public class EmergencyManager {
         EmergencyActionOptimizer.OptimizationResult plan =
             EmergencyActionOptimizer.planForEmergency(numbers, batteryPercent, liveMode);
         currentNumbers = plan.callNumbers;
+
+        String emergencySessionId = UUID.randomUUID().toString();
+        String emergencyEventId = UUID.randomUUID().toString();
+        Prefs.setCurrentEmergencySessionId(ctx, emergencySessionId);
+        Prefs.setLastEmergencyEventId(ctx, emergencyEventId);
+        Log.d(TAG, "Prepared emergency event ID before insert: " + emergencyEventId);
+        new Thread(() -> {
+            try {
+                SupabaseClient client = SupabaseClient.getInstance(ctx);
+                String userId = Prefs.getSupabaseUserId(ctx);
+                if (userId == null || userId.trim().isEmpty()) {
+                    String userPhone = Prefs.getUserPhone(ctx);
+                    JSONObject user = client.getUserByPhone(userPhone);
+                    userId = user == null ? null : user.optString("id", null);
+                    if (userId != null && !userId.trim().isEmpty()) {
+                        Prefs.setSupabaseUserId(ctx, userId);
+                    }
+                }
+
+                if (userId == null || userId.trim().isEmpty()) {
+                    Log.w(TAG, "Supabase emergency event insert skipped: user_id could not be resolved");
+                    return;
+                }
+
+                JSONObject eventData = new JSONObject();
+                eventData.put("id", emergencyEventId);
+                eventData.put("user_id", userId);
+                eventData.put("trigger_type", triggerType);
+                eventData.put("session_id", emergencySessionId);
+                eventData.put("triggered_at", nowIsoUtc());
+                eventData.put("status", "triggered");
+                eventData.put("is_test_event", false);
+                eventData.put("has_location_enabled", isLocationEnabled(ctx));
+
+                SupabaseClient.SupabaseResponse response = client.insertRowReturningRepresentation("emergency_events", eventData);
+                Log.d(TAG, "Emergency insert response: code=" + response.statusCode + " success=" + response.success);
+                Log.d(TAG, "Emergency insert response body: " + response.message);
+                if (!response.success) {
+                    Log.w(TAG, "Supabase emergency event insert failed: " + response.message);
+                    Prefs.setLastEmergencyEventId(ctx, emergencyEventId);
+                } else {
+                    String actualEventId = parseInsertedEmergencyEventId(response.message);
+                    if (actualEventId != null && !actualEventId.trim().isEmpty()) {
+                        Prefs.setLastEmergencyEventId(ctx, actualEventId);
+                        Log.d(TAG, "Stored actual emergency event ID from Supabase response: " + actualEventId);
+                    } else {
+                        Prefs.setLastEmergencyEventId(ctx, emergencyEventId);
+                        Log.w(TAG, "Insert response did not return an event ID. Falling back to generated ID: " + emergencyEventId);
+                    }
+                    client.incrementTotalEmergencies(userId);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Supabase emergency event insert exception", e);
+                Prefs.setLastEmergencyEventId(ctx, emergencyEventId);
+            }
+        }).start();
+
         Log.d(TAG, "Optimizer: battery=" + batteryPercent
             + "% threshold=" + EmergencyActionOptimizer.LOW_BATTERY_THRESHOLD_PERCENT
             + "% applied=" + plan.optimizationApplied
@@ -1297,6 +1365,68 @@ public class EmergencyManager {
         return false;
     }
 
+    /**
+     * Get the duration (in seconds) of a call to a specific number from CallLog.
+     * Returns 0 if no call found or if READ_CALL_LOG permission is missing.
+     */
+    static long getCallDurationSec(Context ctx, String expectedNumber, long startedAfterMs) {
+        if (expectedNumber == null || expectedNumber.trim().isEmpty()) {
+            return 0;
+        }
+        if (ActivityCompat.checkSelfPermission(ctx, Manifest.permission.READ_CALL_LOG)
+                != PackageManager.PERMISSION_GRANTED) {
+            return 0;
+        }
+
+        Cursor cursor = null;
+        try {
+            cursor = ctx.getContentResolver().query(
+                    CallLog.Calls.CONTENT_URI,
+                    new String[] {
+                            CallLog.Calls.NUMBER,
+                            CallLog.Calls.DURATION,
+                            CallLog.Calls.DATE,
+                            CallLog.Calls.TYPE
+                    },
+                    null,
+                    null,
+                    CallLog.Calls.DATE + " DESC"
+            );
+            if (cursor == null) {
+                return 0;
+            }
+
+            int scanned = 0;
+            while (cursor.moveToNext() && scanned < 10) {
+                scanned++;
+                String number = cursor.getString(0);
+                long durationSec = cursor.getLong(1);
+                long dateMs = cursor.getLong(2);
+                int type = cursor.getInt(3);
+
+                if (type != CallLog.Calls.OUTGOING_TYPE) {
+                    continue;
+                }
+                if (startedAfterMs > 0 && dateMs + 1_000L < startedAfterMs) {
+                    break;
+                }
+                if (!numbersMatch(number, expectedNumber)) {
+                    continue;
+                }
+
+                Log.d(TAG, "CallLog duration for " + expectedNumber + ": " + durationSec + "s");
+                return durationSec;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed reading call log for duration", e);
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+        return 0;
+    }
+
     private static boolean hasLiveAnsweredEvidence(Context ctx, String expectedNumber, long startedAfterMs) {
         boolean answeredInLog = wasOutgoingCallAnswered(ctx, expectedNumber, startedAfterMs);
         Log.d(TAG, "Live answer check: answeredInLog=" + answeredInLog
@@ -1356,6 +1486,11 @@ public class EmergencyManager {
     // ================================================================
 
     private static void notifySequenceComplete(Context ctx) {
+        String feedbackEventId = Prefs.getLastEmergencyEventId(ctx);
+        if (feedbackEventId == null || feedbackEventId.trim().isEmpty()) {
+            feedbackEventId = Prefs.getLastEmergencyEventId(ctx);
+            Log.d(TAG, "notifySequenceComplete: fallback eventId from Prefs: " + feedbackEventId);
+        }
         if (pendingStartNextRetry != null) {
             timeoutHandler.removeCallbacks(pendingStartNextRetry);
             pendingStartNextRetry = null;
@@ -1377,7 +1512,247 @@ public class EmergencyManager {
         } catch (Exception e) {
             Log.e(TAG, "Failed to broadcast sequence complete", e);
         }
+
+        promptEmergencyFeedback(ctx, feedbackEventId);
+        final String resolvedEventId = feedbackEventId;
+
+        // ── Collect call results and update Supabase (best-effort, non-blocking) ──
+        new Thread(() -> {
+            try {
+                String eventId = resolvedEventId;
+                if (eventId == null || eventId.trim().isEmpty()) {
+                    eventId = Prefs.getLastEmergencyEventId(ctx);
+                    Log.d(TAG, "notifySequenceComplete: fallback eventId from Prefs: " + eventId);
+                }
+                if (eventId == null || eventId.trim().isEmpty()) {
+                    Log.d(TAG, "notifySequenceComplete: No event ID to update call results");
+                    return;
+                }
+
+                long sequenceStartMs = Prefs.getCallStartTime(ctx);
+                if (sequenceStartMs <= 0) {
+                    sequenceStartMs = System.currentTimeMillis();
+                }
+
+                JSONObject resultsUpdate = new JSONObject();
+                boolean anyAnswered = false;
+                long firstContactMs = 0;
+
+                // Collect results for each contact
+                if (currentNumbers != null && currentNumbers.length > 0) {
+                    String[] contactFields = {"primary_contact_called", "secondary_contact_called", "tertiary_contact_called"};
+                    String[] answeredFields = {"primary_contact_answered", "secondary_contact_answered", "tertiary_contact_answered"};
+                    String[] durationFields = {"primary_contact_duration_s", "secondary_contact_duration_s", "tertiary_contact_duration_s"};
+
+                    for (int i = 0; i < Math.min(currentNumbers.length, 3); i++) {
+                        String phone = currentNumbers[i];
+                        if (phone != null && !phone.trim().isEmpty()) {
+                            // Record which contact was called
+                            resultsUpdate.put(contactFields[i], phone.trim());
+
+                            // Check if call was answered using CallLog
+                            boolean answered = wasOutgoingCallAnswered(ctx, phone, sequenceStartMs);
+                            resultsUpdate.put(answeredFields[i], answered);
+
+                            // Get duration from CallLog
+                            long durationSec = getCallDurationSec(ctx, phone, sequenceStartMs);
+                            resultsUpdate.put(durationFields[i], durationSec);
+
+                            if (answered) {
+                                anyAnswered = true;
+                                if (firstContactMs == 0) {
+                                    firstContactMs = System.currentTimeMillis();
+                                }
+                            }
+
+                            Log.d(TAG, "Call result [" + (i+1) + "]: phone=" + phone + ", answered=" + answered + ", duration=" + durationSec + "s");
+                        }
+                    }
+                }
+
+                // Record SMS recipients (all contacts)
+                if (currentNumbers != null && currentNumbers.length > 0) {
+                    StringBuilder smsRecipients = new StringBuilder();
+                    for (int i = 0; i < currentNumbers.length; i++) {
+                        if (i > 0) smsRecipients.append(",");
+                        smsRecipients.append(currentNumbers[i].trim());
+                    }
+                    resultsUpdate.put("sms_sent_to", smsRecipients.toString());
+                }
+
+                // Determine status based on results
+                String statusValue = "no_response";
+                if (anyAnswered) {
+                    statusValue = "call_answered";
+                } else if (currentNumbers != null && currentNumbers.length > 0) {
+                    statusValue = "call_made";
+                }
+                resultsUpdate.put("status", statusValue);
+
+                // Add resolved timestamp
+                resultsUpdate.put("resolved_at", nowIsoUtc());
+
+                // Add time to first contact if available
+                if (firstContactMs > 0 && sequenceStartMs > 0) {
+                    long diffMs = firstContactMs - sequenceStartMs;
+                    resultsUpdate.put("time_to_first_contact_s", Math.max(0L, diffMs / 1000));
+                }
+
+                // Send update to Supabase
+                Log.d(TAG, "Updating emergency event " + eventId + " with call results: " + resultsUpdate.toString());
+                SupabaseClient.SupabaseResponse response = SupabaseClient.getInstance(ctx)
+                        .updateEmergencyEventResults(eventId, resultsUpdate);
+
+                if (!response.success) {
+                    Log.w(TAG, "Failed to update call results to Supabase: " + response.message);
+                } else {
+                    Log.d(TAG, "Successfully updated call results to Supabase");
+                }
+
+            } catch (Exception e) {
+                Log.e(TAG, "Exception updating emergency event call results", e);
+            }
+
+            // Also update session summary
+            try {
+                String sessionId = Prefs.getCurrentEmergencySessionId(ctx);
+                if (sessionId != null && !sessionId.trim().isEmpty()) {
+                    JSONObject resolvedData = new JSONObject();
+                    resolvedData.put("status", "resolved");
+                    resolvedData.put("resolved_at", nowIsoUtc());
+                    SupabaseClient.SupabaseResponse response = SupabaseClient
+                            .getInstance(ctx)
+                            .updateRow("emergency_events", "session_id", sessionId, resolvedData);
+
+                    if (!response.success) {
+                        Log.w(TAG, "Supabase emergency event resolve update failed: " + response.message);
+                    }
+                    Prefs.setCurrentEmergencySessionId(ctx, null);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Supabase emergency event resolve update exception", e);
+            }
+        }).start();
+
         ensureServiceRunning(ctx);
+    }
+
+    private static void promptEmergencyFeedback(Context ctx, String eventId) {
+        try {
+            if (eventId == null || eventId.trim().isEmpty()) {
+                eventId = Prefs.getLastEmergencyEventId(ctx);
+                Log.d(TAG, "promptEmergencyFeedback: fallback eventId from Prefs: " + eventId);
+                if (eventId == null || eventId.trim().isEmpty()) {
+                    return;
+                }
+            }
+            showFeedbackNotification(ctx, eventId);
+        } catch (Exception e) {
+            Log.w(TAG, "promptEmergencyFeedback failed", e);
+        }
+    }
+
+    public static void showFeedbackNotification(Context context, String eventId) {
+        try {
+            String channelId = "safesphere_feedback";
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel channel = new NotificationChannel(
+                        channelId,
+                        "Emergency Feedback",
+                        NotificationManager.IMPORTANCE_HIGH);
+                channel.setDescription(
+                        "Tap to rate your emergency experience");
+                NotificationManager nm =
+                        context.getSystemService(NotificationManager.class);
+                if (nm != null) nm.createNotificationChannel(channel);
+            }
+
+            Intent feedbackIntent = new Intent(
+                    context, EmergencyFeedbackActivity.class);
+            feedbackIntent.putExtra("event_id", eventId);
+            feedbackIntent.setFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+            PendingIntent pendingIntent = PendingIntent.getActivity(
+                    context,
+                    0,
+                    feedbackIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                    | PendingIntent.FLAG_IMMUTABLE);
+
+            int iconRes = R.mipmap.ic_launcher;
+
+            NotificationCompat.Builder builder =
+                    new NotificationCompat.Builder(context, channelId)
+                    .setSmallIcon(iconRes)
+                    .setContentTitle("How did SafeSphere do?")
+                    .setContentText(
+                            "Tap to rate your emergency experience")
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .setContentIntent(pendingIntent);
+
+            NotificationManagerCompat nm =
+                    NotificationManagerCompat.from(context);
+            boolean canNotify =
+                    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                    || ContextCompat.checkSelfPermission(context,
+                            android.Manifest.permission.POST_NOTIFICATIONS)
+                            == PackageManager.PERMISSION_GRANTED;
+            if (canNotify) {
+                nm.notify(2001, builder.build());
+            }
+        } catch (Exception e) {
+            android.util.Log.w("SafeSphere",
+                    "Failed to show feedback notification", e);
+        }
+    }
+
+    private static String nowIsoUtc() {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+        return sdf.format(new Date());
+    }
+
+    private static String parseInsertedEmergencyEventId(String responseBody) {
+        if (responseBody == null || responseBody.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray(responseBody);
+            if (arr.length() == 0) {
+                return null;
+            }
+            org.json.JSONObject row = arr.optJSONObject(0);
+            if (row == null) {
+                return null;
+            }
+            String id = row.optString("id", null);
+            if (id == null || id.trim().isEmpty()) {
+                return null;
+            }
+            return id.trim();
+        } catch (Exception parseErr) {
+            Log.w(TAG, "Could not parse insert response body for event id", parseErr);
+            return null;
+        }
+    }
+
+    private static boolean isLocationEnabled(Context ctx) {
+        try {
+            LocationManager lm = (LocationManager) ctx.getSystemService(Context.LOCATION_SERVICE);
+            if (lm == null) {
+                return false;
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                return lm.isLocationEnabled();
+            }
+            return lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                    || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     /**

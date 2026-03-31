@@ -6,6 +6,8 @@ import android.content.SharedPreferences;
 public class Prefs {
 
     private static final String PREF_NAME = "safesphere_prefs";
+    private static final String KEY_SUPABASE_USER_ID = "supabase_user_id";
+    private static final String KEY_LAST_EMERGENCY_EVENT_ID = "last_emergency_event_id";
 
     public static void saveUser(Context ctx, String name, String phone,
                                 String keyword, String e1, String e2, String e3) {
@@ -53,6 +55,8 @@ public class Prefs {
         android.util.Log.e("PREFS_DEBUG", "E2: '" + sp.getString("e2", "") + "'");
         android.util.Log.e("PREFS_DEBUG", "E3: '" + sp.getString("e3", "") + "'");
         android.util.Log.e("PREFS_DEBUG", "Logged In: " + sp.getBoolean("logged_in", false));
+        android.util.Log.e("PREFS_DEBUG", "Supabase User ID: '" + sp.getString(KEY_SUPABASE_USER_ID, "") + "'");
+        android.util.Log.e("PREFS_DEBUG", "Last Emergency Event ID: '" + sp.getString(KEY_LAST_EMERGENCY_EVENT_ID, "") + "'");
         android.util.Log.e("PREFS_DEBUG", "==============================");
     }
 
@@ -65,10 +69,39 @@ public class Prefs {
         return getAll(ctx).getString("keyword", "");
     }
 
+    public static void setKeyword(Context ctx, String keyword) {
+        getAll(ctx).edit().putString("keyword", keyword == null ? "" : keyword.toLowerCase().trim()).apply();
+    }
+
+    public static String getUserName(Context ctx) {
+        return getAll(ctx).getString("name", "");
+    }
+
+    public static void setUserName(Context ctx, String name) {
+        getAll(ctx).edit().putString("name", name == null ? "" : name.trim()).apply();
+    }
+
 
     public static String getUserPhone(Context ctx) {
         return getAll(ctx).getString("phone", "");
     }
+
+    public static void setUserPhone(Context ctx, String phone) {
+        getAll(ctx).edit().putString("phone", phone == null ? "" : phone.trim()).apply();
+    }
+
+    public static void setEmergency1(Context ctx, String e1) {
+        getAll(ctx).edit().putString("e1", e1 == null ? "" : e1.trim()).apply();
+    }
+
+    public static void setEmergency2(Context ctx, String e2) {
+        getAll(ctx).edit().putString("e2", e2 == null ? "" : e2.trim()).apply();
+    }
+
+    public static void setEmergency3(Context ctx, String e3) {
+        getAll(ctx).edit().putString("e3", e3 == null ? "" : e3.trim()).apply();
+    }
+
     public static String[] getEmergencyNumbers(Context ctx) {
         SharedPreferences sp = getAll(ctx);
         return new String[]{
@@ -181,12 +214,35 @@ public class Prefs {
     //  ANALYTICS — USER IDENTITY (added for analytics platform)
     // ================================================================
 
+    public static String getSupabaseUserId(Context ctx) {
+        SharedPreferences sp = getAll(ctx);
+        String id = sp.getString(KEY_SUPABASE_USER_ID, null);
+        if (id != null && !id.trim().isEmpty()) {
+            return id;
+        }
+        // Migration fallback for older app versions.
+        String legacy = sp.getString("analytics_user_id", null);
+        if (legacy != null && !legacy.trim().isEmpty()) {
+            setSupabaseUserId(ctx, legacy);
+            return legacy;
+        }
+        return null;
+    }
+
+    public static void setSupabaseUserId(Context ctx, String id) {
+        if (id == null || id.trim().isEmpty()) {
+            getAll(ctx).edit().remove(KEY_SUPABASE_USER_ID).apply();
+            return;
+        }
+        getAll(ctx).edit().putString(KEY_SUPABASE_USER_ID, id.trim()).apply();
+    }
+
     public static String getUserId(Context ctx) {
-        return getAll(ctx).getString("analytics_user_id", null);
+        return getSupabaseUserId(ctx);
     }
 
     public static void setUserId(Context ctx, String userId) {
-        getAll(ctx).edit().putString("analytics_user_id", userId).apply();
+        setSupabaseUserId(ctx, userId);
     }
 
     // ================================================================
@@ -235,6 +291,30 @@ public class Prefs {
         return getAll(ctx).getString("current_session_id", null);
     }
 
+    public static void setCurrentEmergencySessionId(Context ctx, String id) {
+        if (id == null || id.trim().isEmpty()) {
+            getAll(ctx).edit().remove("current_emergency_session_id").apply();
+        } else {
+            getAll(ctx).edit().putString("current_emergency_session_id", id).apply();
+        }
+    }
+
+    public static String getCurrentEmergencySessionId(Context ctx) {
+        return getAll(ctx).getString("current_emergency_session_id", null);
+    }
+
+    public static void setLastEmergencyEventId(Context ctx, String eventId) {
+        if (eventId == null || eventId.trim().isEmpty()) {
+            getAll(ctx).edit().remove(KEY_LAST_EMERGENCY_EVENT_ID).apply();
+            return;
+        }
+        getAll(ctx).edit().putString(KEY_LAST_EMERGENCY_EVENT_ID, eventId.trim()).apply();
+    }
+
+    public static String getLastEmergencyEventId(Context ctx) {
+        return getAll(ctx).getString(KEY_LAST_EMERGENCY_EVENT_ID, null);
+    }
+
     public static void endSession(Context ctx) {
         getAll(ctx).edit().remove("current_session_id").apply();
     }
@@ -267,6 +347,14 @@ public class Prefs {
 
     public static void clearPendingAdminMessages(Context ctx) {
         getAll(ctx).edit().remove("pending_admin_messages").apply();
+    }
+
+    public static boolean needsProfileSetup(Context ctx) {
+        return getAll(ctx).getBoolean("needs_profile_setup", false);
+    }
+
+    public static void setNeedsProfileSetup(Context ctx, boolean needed) {
+        getAll(ctx).edit().putBoolean("needs_profile_setup", needed).apply();
     }
 
 }

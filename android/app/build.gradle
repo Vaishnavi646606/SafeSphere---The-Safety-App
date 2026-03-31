@@ -17,6 +17,7 @@ android {
 
         // Update with local dev IP and provided Supabase anon key
         buildConfigField "String", "VERCEL_BASE_URL", '"http://192.168.0.108:3000/api/"'
+        buildConfigField "String", "SUPABASE_URL", '"https://geyjrugnxhmtcwwuuiab.supabase.co"'
         buildConfigField "String", "SUPABASE_ANON_KEY", '"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdleWpydWdueGhtdGN3d3V1aWFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4MzI0MzUsImV4cCI6MjA4OTQwODQzNX0.2AY03zcUhXzv3klx4F_misWi8qMsQjezKRsuGzn0Qxc"'
         buildConfigField "String", "PHONE_HASH_SALT", '"SafeSphere2024SecureSalt32Chars!!"'
     }
@@ -34,8 +35,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
     }
 }
 

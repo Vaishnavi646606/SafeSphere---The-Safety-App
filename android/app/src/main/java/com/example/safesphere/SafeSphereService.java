@@ -35,6 +35,10 @@ import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 
+import com.example.safesphere.analytics.AnalyticsQueue;
+import com.example.safesphere.analytics.EventType;
+import com.example.safesphere.network.SupabaseClient;
+
 import org.json.JSONObject;
 import org.vosk.Model;
 import org.vosk.Recognizer;
@@ -56,6 +60,8 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
     private static final int  SAMPLE_RATE  = 16000;
     private static final int  BUFFER_MULT  = 4;
     private static final long BG_LOCATION_REFRESH_MS = 5 * 60 * 1000L;
+    private static final String ADMIN_MESSAGE_CHANNEL_ID = "safesphere_messages";
+    private static final long ADMIN_MESSAGE_POLL_MS = 5 * 60 * 1000L;
 
     private PowerManager.WakeLock wakeLock;
     private SensorManager  sensorManager;
@@ -70,6 +76,7 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
     private volatile boolean voskReady     = false;
     private volatile boolean initInProgress = false;
     private boolean locationRefreshScheduled = false;
+    private boolean adminMessagePollScheduled = false;
 
     private long lastTriggerTime = 0;
     private static final long DEBOUNCE_MS = 3_000;
@@ -91,6 +98,18 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
             }
             requestSingleBackgroundLocationUpdate();
             mainHandler.postDelayed(this, BG_LOCATION_REFRESH_MS);
+        }
+    };
+
+    private final Runnable adminMessagePollRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!Prefs.isProtectionEnabled(getApplicationContext())) {
+                adminMessagePollScheduled = false;
+                return;
+            }
+            pollAdminMessagesFromSupabase();
+            mainHandler.postDelayed(this, ADMIN_MESSAGE_POLL_MS);
         }
     };
 
@@ -139,6 +158,7 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
 
         // Battery-friendly refresh so emergency fallback location stays recent.
         startBackgroundLocationRefresh();
+        startAdminMessagePolling();
 
         Log.d(TAG, "Keyword in prefs: '" + Prefs.getKeyword(this) + "'");
         initVosk();
@@ -156,6 +176,12 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
         }
 
         final Context ctx = getApplicationContext();
+
+        if (Prefs.isProtectionEnabled(ctx)) {
+            startAdminMessagePolling();
+        } else {
+            stopAdminMessagePolling();
+        }
 
         // Check if we were killed mid-sequence and need to resume
         int seqIndex = Prefs.getCallSequenceIndex(ctx);
@@ -244,6 +270,7 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
         }
         try { unregisterReceiver(sequenceCompleteReceiver); } catch (Exception ignored) {}
         stopBackgroundLocationRefresh();
+        stopAdminMessagePolling();
         stopListening();
         if (sensorManager != null && shakeDetector != null)
             sensorManager.unregisterListener(shakeDetector);
@@ -356,6 +383,105 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
             }
         } catch (Exception e) {
             Log.e(TAG, "Background location refresh failed", e);
+        }
+    }
+
+    private void startAdminMessagePolling() {
+        if (adminMessagePollScheduled) return;
+        adminMessagePollScheduled = true;
+        mainHandler.removeCallbacks(adminMessagePollRunnable);
+        mainHandler.postDelayed(adminMessagePollRunnable, 10_000L);
+        pollAdminMessagesFromSupabase();
+    }
+
+    private void stopAdminMessagePolling() {
+        adminMessagePollScheduled = false;
+        mainHandler.removeCallbacks(adminMessagePollRunnable);
+    }
+
+    private void pollAdminMessagesFromSupabase() {
+        final Context ctx = getApplicationContext();
+        final String userId = Prefs.getUserId(ctx);
+        if (userId == null || userId.trim().isEmpty()) {
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                SupabaseClient client = SupabaseClient.getInstance(ctx);
+                java.util.List<SupabaseClient.PendingMessageData> pending =
+                        client.fetchPendingMessages(userId, 20);
+
+                for (SupabaseClient.PendingMessageData pm : pending) {
+                    if (pm == null || pm.id == null || pm.messageId == null) continue;
+
+                    SupabaseClient.AdminMessageData msg = client.fetchAdminMessageById(pm.messageId);
+                    if (msg == null || msg.body == null || msg.body.trim().isEmpty()) {
+                        continue;
+                    }
+
+                    postAdminMessageNotification(msg, pm.id);
+                    Prefs.addPendingAdminMessage(ctx, msg.subject, msg.body, msg.isCritical);
+                    AnalyticsQueue.get(ctx).enqueue(EventType.ADMIN_MSG_RECEIVED, null);
+
+                    SupabaseClient.SupabaseResponse mark = client.markPendingMessageDelivered(pm.id);
+                    if (!mark.success) {
+                        Log.w(TAG, "Failed to mark pending message delivered id=" + pm.id + " reason=" + mark.message);
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Admin message poll failed", e);
+            }
+        }, "admin-message-poll").start();
+    }
+
+    private void postAdminMessageNotification(SupabaseClient.AdminMessageData msg, String pendingId) {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NotificationManager.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm != null) {
+                NotificationChannel ch = new NotificationChannel(
+                        ADMIN_MESSAGE_CHANNEL_ID,
+                        "Admin Messages",
+                        NotificationManager.IMPORTANCE_HIGH
+                );
+                ch.setDescription("Important admin communication for SafeSphere users");
+                nm.createNotificationChannel(ch);
+            }
+
+            Intent openIntent = new Intent(this, MainActivity.class);
+            openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent contentIntent = PendingIntent.getActivity(
+                    this,
+                    pendingId.hashCode(),
+                    openIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, ADMIN_MESSAGE_CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setContentTitle(msg.subject == null || msg.subject.trim().isEmpty() ? "Admin Notice" : msg.subject)
+                    .setContentText(msg.body)
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(msg.body))
+                    .setPriority(msg.isCritical ? NotificationCompat.PRIORITY_MAX : NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(msg.isCritical ? NotificationCompat.CATEGORY_ALARM : NotificationCompat.CATEGORY_MESSAGE)
+                    .setAutoCancel(true)
+                    .setContentIntent(contentIntent)
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+
+            if (msg.isCritical) {
+                builder.setFullScreenIntent(contentIntent, true);
+            }
+
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                    == PackageManager.PERMISSION_GRANTED || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                NotificationManager notificationManager =
+                        (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                if (notificationManager != null) {
+                    notificationManager.notify(Math.abs(pendingId.hashCode()), builder.build());
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to post admin message notification", e);
         }
     }
 

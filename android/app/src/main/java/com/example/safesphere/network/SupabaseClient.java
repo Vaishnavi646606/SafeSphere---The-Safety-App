@@ -1,9 +1,20 @@
 package com.example.safesphere.network;
 
+import android.content.Context;
 import android.util.Log;
-import com.google.gson.Gson;
+import com.example.safesphere.BuildConfig;
 import com.google.gson.JsonObject;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -24,45 +35,358 @@ import okhttp3.Response;
 public class SupabaseClient {
     private static final String TAG = "SupabaseClient";
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
+    private static final int CONNECT_TIMEOUT_SEC = 15;
+    private static final int READ_TIMEOUT_SEC = 30;
+    private static final int WRITE_TIMEOUT_SEC = 30;
     
     private static SupabaseClient instance;
     private final OkHttpClient httpClient;
     private final String supabaseUrl;
     private final String supabaseAnonKey;
-    private final Gson gson = new Gson();
     
-    private SupabaseClient() {
-        // Initialize from NetworkConfig (these should be set in BuildConfig values)
-        this.supabaseUrl = "https://YOUR_SUPABASE_URL"; // Replace with your actual Supabase URL
-        this.supabaseAnonKey = "YOUR_SUPABASE_ANON_KEY"; // Replace with anon key
-        
-        // Create OkHttp client with timeouts matching NetworkConfig
+    private SupabaseClient(Context context) {
+        Context appContext = context != null ? context.getApplicationContext() : null;
+        this.supabaseUrl = BuildConfig.SUPABASE_URL;
+        this.supabaseAnonKey = BuildConfig.SUPABASE_ANON_KEY;
+
         this.httpClient = new OkHttpClient.Builder()
-                .connectTimeout(NetworkConfig.CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
-                .readTimeout(NetworkConfig.READ_TIMEOUT_SEC, TimeUnit.SECONDS)
-                .writeTimeout(NetworkConfig.WRITE_TIMEOUT_SEC, TimeUnit.SECONDS)
-                .addInterceptor(chain -> {
-                    // Add auth headers to all requests
-                    Request original = chain.request();
-                    Request withHeaders = original.newBuilder()
-                            .header("Authorization", "Bearer " + supabaseAnonKey)
-                            .header("apikey", supabaseAnonKey)
-                            .header("Prefer", "return=representation")
-                            .build();
-                    return chain.proceed(withHeaders);
-                })
+                .connectTimeout(CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
+                .readTimeout(READ_TIMEOUT_SEC, TimeUnit.SECONDS)
+                .writeTimeout(WRITE_TIMEOUT_SEC, TimeUnit.SECONDS)
                 .build();
     }
     
     public static SupabaseClient getInstance() {
+        return getInstance(null);
+    }
+
+    public static SupabaseClient getInstance(Context context) {
         if (instance == null) {
             synchronized (SupabaseClient.class) {
                 if (instance == null) {
-                    instance = new SupabaseClient();
+                    instance = new SupabaseClient(context);
                 }
             }
         }
         return instance;
+    }
+
+    /**
+     * Inserts one row in any Supabase table using PostgREST.
+     */
+    public SupabaseResponse insertRow(String table, JSONObject data) {
+        return insertRow(table, data, "return=minimal");
+    }
+
+    public SupabaseResponse insertRowReturningRepresentation(String table, JSONObject data) {
+        return insertRow(table, data, "return=representation");
+    }
+
+    private SupabaseResponse insertRow(String table, JSONObject data, String preferHeader) {
+        try {
+            String url = supabaseUrl + "/rest/v1/" + table;
+            RequestBody body = RequestBody.create(data.toString(), JSON);
+            Request request = baseRequestBuilder(url)
+                    .header("Prefer", preferHeader)
+                    .post(body)
+                    .build();
+
+            try (Response response = httpClient.newCall(request).execute()) {
+                return new SupabaseResponse(response.code(), response.isSuccessful(),
+                        response.body() != null ? response.body().string() : "");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "insertRow failed for table=" + table, e);
+            return new SupabaseResponse(0, false, e.getMessage());
+        }
+    }
+
+    /**
+     * Updates row(s) in any Supabase table using one equality filter.
+     */
+    public SupabaseResponse updateRow(String table, String filterColumn, String filterValue, JSONObject data) {
+        return updateRow(table, filterColumn, filterValue, data, "return=minimal");
+    }
+
+    public SupabaseResponse updateRowReturningRepresentation(String table, String filterColumn, String filterValue, JSONObject data) {
+        return updateRow(table, filterColumn, filterValue, data, "return=representation");
+    }
+
+    private SupabaseResponse updateRow(String table, String filterColumn, String filterValue, JSONObject data, String preferHeader) {
+        try {
+            String encodedValue = URLEncoder.encode(filterValue, StandardCharsets.UTF_8.name());
+            String url = supabaseUrl + "/rest/v1/" + table + "?" + filterColumn + "=eq." + encodedValue;
+            RequestBody body = RequestBody.create(data.toString(), JSON);
+            Request request = baseRequestBuilder(url)
+                    .header("Prefer", preferHeader)
+                    .patch(body)
+                    .build();
+
+            try (Response response = httpClient.newCall(request).execute()) {
+                return new SupabaseResponse(response.code(), response.isSuccessful(),
+                        response.body() != null ? response.body().string() : "");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "updateRow failed for table=" + table + " filter=" + filterColumn, e);
+            return new SupabaseResponse(0, false, e.getMessage());
+        }
+    }
+
+    private SupabaseResponse getRows(String table, String query) {
+        try {
+            String url = supabaseUrl + "/rest/v1/" + table + (query == null || query.isEmpty() ? "" : ("?" + query));
+            Request request = baseRequestBuilder(url)
+                    .get()
+                    .build();
+
+            try (Response response = httpClient.newCall(request).execute()) {
+                return new SupabaseResponse(response.code(), response.isSuccessful(),
+                        response.body() != null ? response.body().string() : "");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "getRows failed for table=" + table, e);
+            return new SupabaseResponse(0, false, e.getMessage());
+        }
+    }
+
+    public List<PendingMessageData> fetchPendingMessages(String userId, int limit) {
+        List<PendingMessageData> out = new ArrayList<>();
+        if (userId == null || userId.trim().isEmpty()) {
+            return out;
+        }
+
+        try {
+            String encodedUserId = URLEncoder.encode(userId.trim(), StandardCharsets.UTF_8.name());
+            String query = "select=id,message_id,created_at"
+                    + "&user_id=eq." + encodedUserId
+                    + "&status=eq.pending"
+                    + "&order=created_at.asc"
+                    + "&limit=" + Math.max(1, limit);
+
+            SupabaseResponse response = getRows("pending_messages", query);
+            if (!response.success) {
+                Log.w(TAG, "fetchPendingMessages failed: " + response.message);
+                return out;
+            }
+
+            JSONArray rows = new JSONArray(response.message);
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject item = rows.optJSONObject(i);
+                if (item == null) continue;
+
+                PendingMessageData pm = new PendingMessageData();
+                pm.id = item.optString("id", null);
+                pm.messageId = item.optString("message_id", null);
+                pm.createdAt = item.optString("created_at", null);
+
+                if (pm.id != null && pm.messageId != null) {
+                    out.add(pm);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "fetchPendingMessages parse error", e);
+        }
+
+        return out;
+    }
+
+    public AdminMessageData fetchAdminMessageById(String messageId) {
+        if (messageId == null || messageId.trim().isEmpty()) {
+            return null;
+        }
+
+        try {
+            String encodedId = URLEncoder.encode(messageId.trim(), StandardCharsets.UTF_8.name());
+            String query = "select=id,subject,body,is_critical,created_at&id=eq." + encodedId + "&limit=1";
+            SupabaseResponse response = getRows("admin_messages", query);
+            if (!response.success) {
+                Log.w(TAG, "fetchAdminMessageById failed: " + response.message);
+                return null;
+            }
+
+            JSONArray rows = new JSONArray(response.message);
+            if (rows.length() == 0) {
+                return null;
+            }
+
+            JSONObject item = rows.optJSONObject(0);
+            if (item == null) {
+                return null;
+            }
+
+            AdminMessageData message = new AdminMessageData();
+            message.id = item.optString("id", null);
+            message.subject = item.optString("subject", "Admin Notice");
+            message.body = item.optString("body", "");
+            message.isCritical = item.optBoolean("is_critical", false);
+            message.createdAt = item.optString("created_at", null);
+            return message;
+        } catch (Exception e) {
+            Log.e(TAG, "fetchAdminMessageById parse error", e);
+            return null;
+        }
+    }
+
+    public SupabaseResponse markPendingMessageDelivered(String pendingMessageId) {
+        JSONObject patch = new JSONObject();
+        try {
+            patch.put("status", "delivered");
+            patch.put("delivered_at", nowIsoUtc());
+        } catch (Exception e) {
+            return new SupabaseResponse(0, false, e.getMessage());
+        }
+        return updateRow("pending_messages", "id", pendingMessageId, patch);
+    }
+
+    public String getActiveUserIdByPhoneHash(String phoneHash) {
+        JSONObject user = getUserByPhone(phoneHash);
+        return user == null ? null : user.optString("id", null);
+    }
+
+    public JSONObject getUserByPhone(String phone) {
+        if (phone == null || phone.trim().isEmpty()) {
+            Log.w(TAG, "getUserByPhone: phone is null or empty");
+            return null;
+        }
+
+        try {
+            String trimmedPhone = phone.trim();
+            // Build the query WITHOUT double-encoding (PostgREST expects the filter value as-is)
+            String query = "select=id,display_name"
+                    + "&phone_hash=eq." + trimmedPhone
+                    + "&is_active=eq.true"
+                    + "&limit=1";
+            
+            String fullUrl = supabaseUrl + "/rest/v1/users?" + query;
+            Log.d(TAG, "getUserByPhone: Requesting URL: " + fullUrl);
+            
+            SupabaseResponse response = getRows("users", query);
+            Log.d(TAG, "getUserByPhone: Response success=" + response.success);
+            
+            if (!response.success) {
+                Log.w(TAG, "getUserByPhone failed. Message: " + response.message);
+                return null;
+            }
+
+            if (response.message == null || response.message.isEmpty()) {
+                Log.w(TAG, "getUserByPhone: Response body is empty");
+                return null;
+            }
+
+            Log.d(TAG, "getUserByPhone: Response body: " + response.message);
+            
+            JSONArray rows;
+            try {
+                rows = new JSONArray(response.message);
+            } catch (Exception parseErr) {
+                Log.e(TAG, "getUserByPhone: Failed to parse response as JSONArray", parseErr);
+                Log.e(TAG, "getUserByPhone: Response was: " + response.message);
+                return null;
+            }
+
+            if (rows.length() == 0) {
+                Log.d(TAG, "getUserByPhone: No matching user found for phone: " + trimmedPhone);
+                return null;
+            }
+
+            JSONObject item = rows.optJSONObject(0);
+            if (item == null) {
+                Log.w(TAG, "getUserByPhone: First array element is null or not a JSONObject");
+                return null;
+            }
+            
+            String userId = item.optString("id", null);
+            if (userId == null || userId.trim().isEmpty()) {
+                Log.w(TAG, "getUserByPhone: User found but id is missing");
+                return null;
+            }
+            
+            Log.d(TAG, "getUserByPhone: Found user with id=" + userId + " for phone=" + trimmedPhone);
+            return item;
+        } catch (Exception e) {
+            Log.e(TAG, "getUserByPhone exception", e);
+            return null;
+        }
+    }
+
+    public JSONObject getUserProfileByPhone(String phone) {
+        if (phone == null || phone.trim().isEmpty()) return null;
+        try {
+            String query = "select=id,display_name,keyword,"
+                    + "emergency_contact_1,emergency_contact_2,emergency_contact_3"
+                    + "&phone_hash=eq." + phone.trim()
+                    + "&is_active=eq.true"
+                    + "&limit=1";
+            SupabaseResponse response = getRows("users", query);
+            if (!response.success) return null;
+            if (response.message == null || response.message.isEmpty()) return null;
+            JSONArray rows = new JSONArray(response.message);
+            if (rows.length() == 0) return null;
+            return rows.optJSONObject(0);
+        } catch (Exception e) {
+            Log.e(TAG, "getUserProfileByPhone exception", e);
+            return null;
+        }
+    }
+
+    public void incrementTotalEmergencies(String userId) {
+        if (userId == null || userId.trim().isEmpty()) {
+            return;
+        }
+
+        try {
+            // Count all emergency_events for this user (more reliable than increment)
+            String encodedUserId = URLEncoder.encode(userId.trim(), StandardCharsets.UTF_8.name());
+            String query = "select=id&user_id=eq." + encodedUserId;
+            SupabaseResponse response = getRows("emergency_events", query);
+            
+            if (!response.success) {
+                Log.w(TAG, "incrementTotalEmergencies: Failed to count events: " + response.message);
+                return;
+            }
+
+            int eventCount = 0;
+            try {
+                JSONArray rows = new JSONArray(response.message);
+                eventCount = rows.length();
+                Log.d(TAG, "incrementTotalEmergencies: Found " + eventCount + " emergency events for user " + userId);
+            } catch (Exception e) {
+                Log.e(TAG, "incrementTotalEmergencies: Failed to parse event count", e);
+                return;
+            }
+
+            // Update users.total_emergencies with actual count
+            JSONObject patch = new JSONObject();
+            patch.put("total_emergencies", eventCount);
+            patch.put("updated_at", nowIsoUtc());
+
+            SupabaseResponse update = updateRow("users", "id", userId, patch);
+            if (!update.success) {
+                Log.w(TAG, "incrementTotalEmergencies: Failed to update count: " + update.message);
+            } else {
+                Log.d(TAG, "incrementTotalEmergencies: Updated total_emergencies to " + eventCount + " for user " + userId);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "incrementTotalEmergencies: Exception", e);
+        }
+    }
+
+    private String nowIsoUtc() {
+        return toIso8601(System.currentTimeMillis());
+    }
+
+    public static String toIso8601(long millis) {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+        return sdf.format(new Date(millis));
+    }
+
+    private Request.Builder baseRequestBuilder(String url) {
+        return new Request.Builder()
+                .url(url)
+                .header("apikey", supabaseAnonKey)
+                .header("Authorization", "Bearer " + supabaseAnonKey)
+                .header("Content-Type", "application/json");
     }
     
     /**
@@ -70,33 +394,21 @@ public class SupabaseClient {
      * Thread-safe: call from background thread only.
      */
     public SupabaseResponse insertEmergencyEvent(EmergencyEventData data) {
+        JSONObject json = new JSONObject();
         try {
-            String url = supabaseUrl + "/rest/v1/emergency_events";
-            JsonObject json = new JsonObject();
-            json.addProperty("user_id", data.userId);
-            json.addProperty("trigger_type", data.triggerType);
-            json.addProperty("triggered_at", data.triggeredAt);
-            json.addProperty("session_id", data.sessionId);
-            json.addProperty("location_lat", data.locationLat);
-            json.addProperty("location_lng", data.locationLng);
-            json.addProperty("status", "triggered");
-            json.addProperty("phone_battery_percent", data.batteryPercent);
-            json.addProperty("has_location_enabled", data.hasLocationEnabled);
-            
-            RequestBody body = RequestBody.create(json.toString(), JSON);
-            Request request = new Request.Builder()
-                    .url(url)
-                    .post(body)
-                    .build();
-            
-            try (Response response = httpClient.newCall(request).execute()) {
-                return new SupabaseResponse(response.code(), response.isSuccessful(),
-                        response.body() != null ? response.body().string() : "");
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Error inserting emergency event", e);
+            json.put("user_id", data.userId);
+            json.put("trigger_type", data.triggerType);
+            json.put("triggered_at", data.triggeredAt);
+            json.put("session_id", data.sessionId);
+            json.put("location_lat", data.locationLat);
+            json.put("location_lng", data.locationLng);
+            json.put("status", "triggered");
+            json.put("has_location_enabled", data.hasLocationEnabled);
+        } catch (Exception e) {
+            Log.e(TAG, "Error building emergency event payload", e);
             return new SupabaseResponse(0, false, e.getMessage());
         }
+        return insertRow("emergency_events", json);
     }
     
     /**
@@ -104,25 +416,14 @@ public class SupabaseClient {
      * Thread-safe: call from background thread only.
      */
     public SupabaseResponse updateEmergencyEvent(String eventId, String status) {
+        JSONObject json = new JSONObject();
         try {
-            String url = supabaseUrl + "/rest/v1/emergency_events?id=eq." + eventId;
-            JsonObject json = new JsonObject();
-            json.addProperty("status", status);
-            
-            RequestBody body = RequestBody.create(json.toString(), JSON);
-            Request request = new Request.Builder()
-                    .url(url)
-                    .patch(body)
-                    .build();
-            
-            try (Response response = httpClient.newCall(request).execute()) {
-                return new SupabaseResponse(response.code(), response.isSuccessful(),
-                        response.body() != null ? response.body().string() : "");
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Error updating emergency event", e);
+            json.put("status", status);
+        } catch (Exception e) {
+            Log.e(TAG, "Error building emergency event status payload", e);
             return new SupabaseResponse(0, false, e.getMessage());
         }
+        return updateRow("emergency_events", "id", eventId, json);
     }
     
     /**
@@ -130,31 +431,20 @@ public class SupabaseClient {
      * Thread-safe: call from background thread only.
      */
     public SupabaseResponse submitEmergencyFeedback(EmergencyFeedbackData data) {
+        JSONObject json = new JSONObject();
         try {
-            String url = supabaseUrl + "/rest/v1/emergency_feedback";
-            JsonObject json = new JsonObject();
-            json.addProperty("event_id", data.eventId);
-            json.addProperty("user_id", data.userId);
-            json.addProperty("was_real_emergency", data.wasRealEmergency);
-            json.addProperty("was_rescued_or_helped", data.wasRescuedOrHelped);
-            json.addProperty("rating", data.rating);
-            json.addProperty("feedback_text", data.feedbackText);
-            json.addProperty("submitted_at", System.currentTimeMillis());
-            
-            RequestBody body = RequestBody.create(json.toString(), JSON);
-            Request request = new Request.Builder()
-                    .url(url)
-                    .post(body)
-                    .build();
-            
-            try (Response response = httpClient.newCall(request).execute()) {
-                return new SupabaseResponse(response.code(), response.isSuccessful(),
-                        response.body() != null ? response.body().string() : "");
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Error submitting feedback", e);
+            json.put("event_id", data.eventId);
+            json.put("user_id", data.userId);
+            json.put("was_real_emergency", data.wasRealEmergency);
+            json.put("was_rescued_or_helped", data.wasRescuedOrHelped);
+            json.put("rating", data.rating);
+            json.put("feedback_text", data.feedbackText);
+            json.put("submitted_at", nowIsoUtc());
+        } catch (Exception e) {
+            Log.e(TAG, "Error building emergency feedback payload", e);
             return new SupabaseResponse(0, false, e.getMessage());
         }
+        return insertRow("emergency_feedback", json);
     }
     
     /**
@@ -162,30 +452,66 @@ public class SupabaseClient {
      * Thread-safe: call from background thread only.
      */
     public SupabaseResponse logAnalyticsEvent(AnalyticsEventData data) {
+        JSONObject json = new JSONObject();
         try {
-            String url = supabaseUrl + "/rest/v1/analytics_events";
-            JsonObject json = new JsonObject();
-            json.addProperty("user_id", data.userId);
-            json.addProperty("event_type", data.eventType);
-            json.addProperty("event_name", data.eventName);
-            json.addProperty("session_id", data.sessionId);
-            json.addProperty("payload", data.payloadJson);
-            json.addProperty("client_timestamp", System.currentTimeMillis());
-            
-            RequestBody body = RequestBody.create(json.toString(), JSON);
-            Request request = new Request.Builder()
-                    .url(url)
-                    .post(body)
-                    .build();
-            
-            try (Response response = httpClient.newCall(request).execute()) {
-                return new SupabaseResponse(response.code(), response.isSuccessful(),
-                        response.body() != null ? response.body().string() : "");
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Error logging analytics", e);
+            json.put("user_id", data.userId);
+            json.put("event_type", data.eventType);
+            json.put("event_name", data.eventName);
+            json.put("session_id", data.sessionId);
+            json.put("payload", data.payloadJson);
+            json.put("client_timestamp", nowIsoUtc());
+        } catch (Exception e) {
+            Log.e(TAG, "Error building analytics payload", e);
             return new SupabaseResponse(0, false, e.getMessage());
         }
+        return insertRow("analytics_events", json);
+    }
+
+    /**
+     * Update emergency event with call results and resolved status.
+     * Thread-safe: call from background thread only.
+     */
+    public SupabaseResponse updateEmergencyEventResults(String eventId, JSONObject updates) {
+        if (eventId == null || eventId.trim().isEmpty()) {
+            Log.w(TAG, "updateEmergencyEventResults: eventId is null or empty");
+            return new SupabaseResponse(0, false, "eventId is required");
+        }
+        if (updates == null) {
+            Log.w(TAG, "updateEmergencyEventResults: updates is null");
+            return new SupabaseResponse(0, false, "updates is required");
+        }
+
+        try {
+            // Add timestamp if not already present
+            if (!updates.has("updated_at")) {
+                updates.put("updated_at", nowIsoUtc());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error building emergency event results payload", e);
+        }
+
+        Log.d(TAG, "updateEmergencyEventResults: Updating event " + eventId + " with: " + updates.toString());
+        SupabaseResponse response = updateRowReturningRepresentation("emergency_events", "id", eventId, updates);
+        if (!response.success) {
+            Log.w(TAG, "updateEmergencyEventResults failed: " + response.message);
+        } else {
+            try {
+                JSONArray rows = new JSONArray(response.message == null ? "[]" : response.message);
+                if (rows.length() == 0) {
+                    Log.w(TAG, "updateEmergencyEventResults: Supabase returned 0 rows for event " + eventId);
+                    return new SupabaseResponse(response.statusCode, false,
+                            "PATCH matched 0 rows for event_id=" + eventId);
+                }
+                Log.d(TAG, "updateEmergencyEventResults: Successfully updated event " + eventId
+                        + " (rows=" + rows.length() + ")");
+            } catch (Exception parseErr) {
+                Log.w(TAG, "updateEmergencyEventResults: Could not parse PATCH response body", parseErr);
+                return new SupabaseResponse(response.statusCode, false,
+                        "Could not parse PATCH response: " + parseErr.getMessage()
+                                + " body=" + response.message);
+            }
+        }
+        return response;
     }
     
     // ============ DATA CLASSES ============
@@ -228,5 +554,19 @@ public class SupabaseClient {
         public String eventName;
         public String sessionId;
         public String payloadJson;
+    }
+
+    public static class PendingMessageData {
+        public String id;
+        public String messageId;
+        public String createdAt;
+    }
+
+    public static class AdminMessageData {
+        public String id;
+        public String subject;
+        public String body;
+        public boolean isCritical;
+        public String createdAt;
     }
 }

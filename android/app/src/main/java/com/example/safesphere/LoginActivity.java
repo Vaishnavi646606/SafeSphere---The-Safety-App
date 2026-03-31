@@ -1,162 +1,205 @@
 package com.example.safesphere;
 
-import android.Manifest;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 
-import com.example.safesphere.analytics.AnalyticsQueue;
-import com.example.safesphere.analytics.EventType;
+import com.example.safesphere.network.SupabaseClient;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import org.json.JSONObject;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
 
 public class LoginActivity extends AppCompatActivity {
 
-    private static final int REQ_PERMISSION = 141;
-    private List<String> pendingPermissions;
+    private EditText etLoginPhone;
+    private Button btnLogin;
+    private Button btnGoRegister;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
-        // Debug: Log all SharedPreferences
-        Prefs.logAllPrefs(this);
-        
-        // Check if user is already logged in
-        if (Prefs.isLoggedIn(this)) {
-            android.util.Log.d("LOGIN", "User already logged in, redirecting to MainActivity");
-            startActivity(new Intent(this, MainActivity.class));
-            finish();
+
+        String savedPhone = Prefs.getUserPhone(this);
+        boolean isLoggedIn = Prefs.isLoggedIn(this);
+        if (isLoggedIn && savedPhone != null && savedPhone.matches("\\d{10}")) {
+            attemptAutoLogin(savedPhone);
             return;
         }
-        
-        android.util.Log.d("LOGIN", "User not logged in, showing login screen");
+
         setContentView(R.layout.activity_login);
+        initViews();
+    }
 
-        EditText etLoginPhone = findViewById(R.id.etLoginPhone);
-        Button btnLogin = findViewById(R.id.btnLogin);
-        Button btnGoRegister = findViewById(R.id.btnGoRegister);
+    private void initViews() {
+        etLoginPhone = findViewById(R.id.etLoginPhone);
+        btnLogin = findViewById(R.id.btnLogin);
+        btnGoRegister = findViewById(R.id.btnGoRegister);
 
-        // 🔐 LOGIN BUTTON
-        btnLogin.setOnClickListener(v -> {
-
-            String entered = etLoginPhone.getText().toString().trim();
-            String saved   = Prefs.getUserPhone(this);
-
-            if (TextUtils.isEmpty(entered)) {
-                etLoginPhone.setError("Enter your mobile number");
-                etLoginPhone.requestFocus();
-                return;
-            }
-
-            if (!isValidPhone(entered)) {
-                etLoginPhone.setError("Enter a valid 10-digit mobile number");
-                etLoginPhone.requestFocus();
-                return;
-            }
-
-            // ❗ Agar register nahi kiya
-            if (saved == null || saved.isEmpty()) {
-                Toast.makeText(this, "Please register first", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
-            // ❗ Phone mismatch
-            if (!entered.equals(saved)) {
-                Toast.makeText(this, "Invalid phone number", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
-            // ✅ Login success - set logged in flag
-            Prefs.setLoggedIn(this, true);
-
-            // ── Analytics: ensure user ID exists, enqueue login event ──
-            if (Prefs.getUserId(this) == null) {
-                Prefs.setUserId(this, UUID.randomUUID().toString());
-            }
-            AnalyticsQueue.get(this).enqueue(EventType.LOGIN, null);
-
-            showWelcomeDialog();
-        });
-
-        // 🔁 Go to Register screen
+        btnLogin.setOnClickListener(v -> doLogin());
         btnGoRegister.setOnClickListener(v ->
                 startActivity(new Intent(LoginActivity.this, RegisterActivity.class)));
     }
 
-    private boolean isValidPhone(String value) {
-        return value.matches("\\d{10}");
-    }
+    private void attemptAutoLogin(String savedPhone) {
+        new Thread(() -> {
+            try {
+                SupabaseClient client = SupabaseClient.getInstance(getApplicationContext());
+                JSONObject user = client.getUserProfileByPhone(savedPhone);
+                String userId = user != null ? user.optString("id", "") : "";
 
-    private void showWelcomeDialog() {
-        new AlertDialog.Builder(this)
-                .setTitle("Welcome to SafeSphere")
-                .setMessage("To work properly and keep you safe, SafeSphere needs a few permissions.\n\nPlease allow them when asked — this helps the app send emergency alerts, detect your keyword, and share your location with your trusted contacts.")
-                .setCancelable(false)
-                .setPositiveButton("OK, Let's Go", (dialog, which) -> startSequentialPermissions())
-                .show();
-    }
+                if (user != null && userId != null && !userId.trim().isEmpty()) {
+                    String displayName = user.optString("display_name", "");
+                    String keyword = user.optString("keyword", "");
+                    String e1 = user.optString("emergency_contact_1", "");
+                    String e2 = user.optString("emergency_contact_2", "");
+                    String e3 = user.optString("emergency_contact_3", "");
 
-    private void startSequentialPermissions() {
-        pendingPermissions = new ArrayList<>();
-        pendingPermissions.add(Manifest.permission.RECORD_AUDIO);
-        pendingPermissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
-        pendingPermissions.add(Manifest.permission.SEND_SMS);
-        pendingPermissions.add(Manifest.permission.CALL_PHONE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            pendingPermissions.add(Manifest.permission.ANSWER_PHONE_CALLS);
-        }
-        pendingPermissions.add(Manifest.permission.READ_PHONE_STATE);
-        pendingPermissions.add(Manifest.permission.READ_CALL_LOG);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            pendingPermissions.add(Manifest.permission.ACCESS_BACKGROUND_LOCATION);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pendingPermissions.add(Manifest.permission.POST_NOTIFICATIONS);
-        }
-        requestNextPermission();
-    }
+                    Prefs.setSupabaseUserId(getApplicationContext(), userId);
+                    if (!displayName.isEmpty()) {
+                        Prefs.setUserName(getApplicationContext(), displayName);
+                    }
+                    if (!keyword.isEmpty()) {
+                        Prefs.setKeyword(getApplicationContext(), keyword);
+                    }
+                    if (!e1.isEmpty()) {
+                        Prefs.setEmergency1(getApplicationContext(), e1);
+                    }
+                    if (!e2.isEmpty()) {
+                        Prefs.setEmergency2(getApplicationContext(), e2);
+                    }
+                    if (!e3.isEmpty()) {
+                        Prefs.setEmergency3(getApplicationContext(), e3);
+                    }
+                    Prefs.setUserPhone(getApplicationContext(), savedPhone);
+                    Prefs.setLoggedIn(getApplicationContext(), true);
 
-    private void requestNextPermission() {
-        while (!pendingPermissions.isEmpty()) {
-            String perm = pendingPermissions.get(0);
-            if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{perm}, REQ_PERMISSION);
-                return;
+                    // Check if profile setup is needed
+                    if (keyword.isEmpty() || e1.isEmpty()) {
+                        Prefs.setNeedsProfileSetup(getApplicationContext(), true);
+                    }
+
+                    JSONObject updateData = new JSONObject();
+                    updateData.put("last_app_open", nowIsoUtc());
+                    client.updateRow("users", "phone_hash", savedPhone, updateData);
+
+                    runOnUiThread(this::goToMain);
+                    return;
+                }
+
+                Prefs.setLoggedIn(getApplicationContext(), false);
+                Prefs.setSupabaseUserId(getApplicationContext(), null);
+                runOnUiThread(() -> {
+                    setContentView(R.layout.activity_login);
+                    initViews();
+                    Toast.makeText(LoginActivity.this, "Session expired. Please login again.", Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception e) {
+                android.util.Log.w("SafeSphere_LOGIN", "Auto-login failed", e);
+                runOnUiThread(() -> {
+                    setContentView(R.layout.activity_login);
+                    initViews();
+                });
             }
-            pendingPermissions.remove(0);
-        }
-        goToMain();
+        }).start();
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_PERMISSION) {
-            if (!pendingPermissions.isEmpty()) {
-                pendingPermissions.remove(0);
-            }
-            requestNextPermission();
+    private void doLogin() {
+        String phone = etLoginPhone.getText().toString().trim();
+        if (TextUtils.isEmpty(phone) || !phone.matches("\\d{10}")) {
+            etLoginPhone.setError("Enter a valid 10-digit mobile number");
+            etLoginPhone.requestFocus();
+            return;
         }
+
+        setLoading(true);
+
+        new Thread(() -> {
+            try {
+                SupabaseClient client = SupabaseClient.getInstance(getApplicationContext());
+                JSONObject user = client.getUserProfileByPhone(phone);
+
+                if (user == null) {
+                    runOnUiThread(() -> {
+                        setLoading(false);
+                        Toast.makeText(LoginActivity.this, "No account found. Please register first.", Toast.LENGTH_LONG).show();
+                    });
+                    return;
+                }
+
+                String userId = user.optString("id", "");
+                String displayName = user.optString("display_name", "");
+                String keyword = user.optString("keyword", "");
+                String e1 = user.optString("emergency_contact_1", "");
+                String e2 = user.optString("emergency_contact_2", "");
+                String e3 = user.optString("emergency_contact_3", "");
+
+                Prefs.setUserPhone(getApplicationContext(), phone);
+                Prefs.setSupabaseUserId(getApplicationContext(), userId);
+                if (!displayName.isEmpty()) {
+                    Prefs.setUserName(getApplicationContext(), displayName);
+                }
+                if (!keyword.isEmpty()) {
+                    Prefs.setKeyword(getApplicationContext(), keyword);
+                }
+                if (!e1.isEmpty()) {
+                    Prefs.setEmergency1(getApplicationContext(), e1);
+                }
+                if (!e2.isEmpty()) {
+                    Prefs.setEmergency2(getApplicationContext(), e2);
+                }
+                if (!e3.isEmpty()) {
+                    Prefs.setEmergency3(getApplicationContext(), e3);
+                }
+                Prefs.setLoggedIn(getApplicationContext(), true);
+
+                // Check if profile setup is needed
+                if (keyword.isEmpty() || e1.isEmpty()) {
+                    Prefs.setNeedsProfileSetup(getApplicationContext(), true);
+                }
+
+                JSONObject updateData = new JSONObject();
+                updateData.put("last_app_open", nowIsoUtc());
+                client.updateRow("users", "phone_hash", phone, updateData);
+
+                runOnUiThread(this::goToMain);
+            } catch (Exception e) {
+                android.util.Log.w("SafeSphere_LOGIN", "Login failed", e);
+                runOnUiThread(() -> {
+                    setLoading(false);
+                    Toast.makeText(LoginActivity.this, "Login failed. Check your connection and try again.", Toast.LENGTH_LONG).show();
+                });
+            }
+        }).start();
+    }
+
+    private void setLoading(boolean loading) {
+        btnLogin.setEnabled(!loading);
+        btnLogin.setText(loading ? "Checking..." : "Login");
+        btnLogin.setBackgroundTintList(
+            android.content.res.ColorStateList.valueOf(
+                android.graphics.Color.parseColor("#C2185B")));
+        btnGoRegister.setEnabled(!loading);
+        btnGoRegister.setBackgroundTintList(
+            android.content.res.ColorStateList.valueOf(
+                android.graphics.Color.parseColor("#880E4F")));
+    }
+
+    private static String nowIsoUtc() {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+        return sdf.format(new Date());
     }
 
     private void goToMain() {
-        Prefs.setCompletedPermissionSetup(this, true);
         Intent i = new Intent(this, MainActivity.class);
         i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(i);

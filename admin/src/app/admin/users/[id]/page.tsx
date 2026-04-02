@@ -19,6 +19,10 @@ interface UserDetail {
   app_version: string | null
   os_type: string | null
   total_emergencies: number
+  keyword: string | null
+  emergency_contact_1: string | null
+  emergency_contact_2: string | null
+  emergency_contact_3: string | null
 }
 
 interface EmergencyEvent {
@@ -110,11 +114,18 @@ export default function UserDetailPage() {
     const total = emergencies.length
     const rescued = emergencies.filter((event) => event.resolution_type === 'rescued' || event.resolution_type === 'safe_contact').length
     const falseAlarms = emergencies.filter((event) => event.resolution_type === 'false_alarm').length
-    const rescueRate = total ? Math.round((rescued / total) * 100) : 0
     const reviewedNeeded = emergencies.filter((event) => event.requires_admin_review === true).length
 
-    return { total, rescued, falseAlarms, rescueRate, reviewedNeeded }
+    return { total, rescued, falseAlarms, reviewedNeeded }
   }, [emergencies])
+
+const avgRating = useMemo(() => {
+  if (feedback.length === 0) return 0
+  const validRatings = feedback.filter((f) => f.rating > 0)
+  if (validRatings.length === 0) return 0
+  const sum = validRatings.reduce((acc, f) => acc + f.rating, 0)
+  return Math.round((sum / validRatings.length) * 10) / 10
+}, [feedback])
 
   if (loading) {
     return <LoadingSkeleton type="card" count={4} />
@@ -182,6 +193,13 @@ export default function UserDetailPage() {
             <p>App Version: {user.app_version || 'N/A'}</p>
             <p>OS Type: {user.os_type || 'N/A'}</p>
             <p>Status: {user.is_active ? 'Active' : 'Inactive'}</p>
+                      <div className="mt-4 border-t border-white/5 pt-3">
+                        <p className="text-xs uppercase tracking-wider text-slate-500 mb-2">Safety Settings</p>
+                        <p>Keyword: {user.keyword || 'Not set'}</p>
+                        <p>Contact 1: {user.emergency_contact_1 || 'Not set'}</p>
+                        <p>Contact 2: {user.emergency_contact_2 || 'Not set'}</p>
+                        <p>Contact 3: {user.emergency_contact_3 || 'Not set'}</p>
+                      </div>
           </div>
         </div>
 
@@ -193,7 +211,6 @@ export default function UserDetailPage() {
             <p>Rescued/Safe: {stats.rescued}</p>
             <p>False Alarms: {stats.falseAlarms}</p>
             <p>Requires Review: {stats.reviewedNeeded}</p>
-            <p>Rescue Rate: {stats.rescueRate}%</p>
           </div>
         </div>
       </div>
@@ -202,7 +219,7 @@ export default function UserDetailPage() {
         <StatsCard label="Total Emergencies" value={user.total_emergencies || 0} icon={AlertTriangle} color="#f59e0b" />
         <StatsCard label="Rescued/Safe" value={stats.rescued} icon={Shield} color="#10b981" />
         <StatsCard label="False Alarms" value={stats.falseAlarms} icon={AlertTriangle} color="#ef4444" />
-        <StatsCard label="Rescue Rate" value={`${stats.rescueRate}%`} icon={Shield} color="#06b6d4" />
+        <StatsCard label="Avg Rating" value={avgRating} icon={Shield} color="#06b6d4" />
       </div>
 
       <div className="rounded-2xl border border-white/5 bg-[#12121a] p-6 shadow-lg shadow-black/20">

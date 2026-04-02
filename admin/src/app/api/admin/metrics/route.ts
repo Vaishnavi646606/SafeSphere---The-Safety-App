@@ -4,12 +4,8 @@ import { createServiceClient } from '@/lib/supabase/server'
 type TrendDirection = 'up' | 'down' | 'neutral' | 'new'
 
 function computeTrend(current: number, previous: number): { value: number | null; direction: TrendDirection } {
-  if (previous === 0 && current > 0) {
-    return { value: null, direction: 'new' }
-  }
-  if (previous === 0 && current === 0) {
-    return { value: null, direction: 'neutral' }
-  }
+  if (previous === 0 && current > 0) return { value: null, direction: 'new' }
+  if (previous === 0 && current === 0) return { value: null, direction: 'neutral' }
   const raw = ((current - previous) / previous) * 100
   const rounded = Math.round(raw * 10) / 10
   if (rounded > 0) return { value: rounded, direction: 'up' }
@@ -36,16 +32,17 @@ export async function GET(req: NextRequest) {
     { count: activeUsers },
     { count: removedUsers },
     { count: totalIncidents },
-    { count: incidentsSafeSelf },
-    { count: incidentsCallConn },
-    { count: verifiedRescues },
+    { count: contactsCalled },
+    { count: callsAnswered },
     { count: activeToday },
     { count: usersCurrent },
     { count: usersPrevious },
     { count: incidentsCurrent },
     { count: incidentsPrevious },
-    { count: rescuesCurrent },
-    { count: rescuesPrevious },
+    { count: feedbackCount },
+    { count: realEmergencies },
+    { count: usersRescued },
+    { data: ratingsRaw },
     { data: dailyEventsRaw },
     { data: triggerEventsRaw }
   ] = await Promise.all([
@@ -53,25 +50,33 @@ export async function GET(req: NextRequest) {
     serviceClient.from('users').select('*', { count: 'exact', head: true }).eq('is_active', true),
     serviceClient.from('users').select('*', { count: 'exact', head: true }).eq('is_active', false),
     serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).gte('triggered_at', since),
-    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).eq('resolution_type', 'safe_self').gte('triggered_at', since),
-    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).eq('primary_contact_answered', true).gte('triggered_at', since),
-    serviceClient.from('saved_verifications').select('*', { count: 'exact', head: true }).gte('verified_at', since),
+    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).not('primary_contact_called', 'is', null).gte('triggered_at', since),
+    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).or('primary_contact_answered.eq.true,secondary_contact_answered.eq.true,tertiary_contact_answered.eq.true').gte('triggered_at', since),
     serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).gte('triggered_at', todayStart.toISOString()),
     serviceClient.from('users').select('*', { count: 'exact', head: true }).gte('created_at', since),
     serviceClient.from('users').select('*', { count: 'exact', head: true }).gte('created_at', prevSince).lt('created_at', prevUntil),
     serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).gte('triggered_at', since),
     serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).gte('triggered_at', prevSince).lt('triggered_at', prevUntil),
-    serviceClient.from('saved_verifications').select('*', { count: 'exact', head: true }).gte('verified_at', since),
-    serviceClient.from('saved_verifications').select('*', { count: 'exact', head: true }).gte('verified_at', prevSince).lt('verified_at', prevUntil),
+    serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }).gte('submitted_at', since),
+    serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }).eq('was_real_emergency', true).gte('submitted_at', since),
+    serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }).eq('was_rescued_or_helped', true).gte('submitted_at', since),
+    serviceClient.from('emergency_feedback').select('rating').gte('submitted_at', since),
     serviceClient.from('emergency_events').select('triggered_at').gte('triggered_at', since),
     serviceClient.from('emergency_events').select('trigger_type').gte('triggered_at', since)
   ])
 
+  let avgRating = 0
+  if (ratingsRaw && ratingsRaw.length > 0) {
+    const validRatings = ratingsRaw.filter((r: any) => r.rating != null && r.rating > 0)
+    if (validRatings.length > 0) {
+      const sum = validRatings.reduce((acc: number, r: any) => acc + r.rating, 0)
+      avgRating = Math.round((sum / validRatings.length) * 10) / 10
+    }
+  }
+
   const usersTrend = computeTrend(usersCurrent || 0, usersPrevious || 0)
   const incidentsTrend = computeTrend(incidentsCurrent || 0, incidentsPrevious || 0)
-  const rescuesTrend = computeTrend(rescuesCurrent || 0, rescuesPrevious || 0)
 
-  // Group daily events by date
   const dailyGrouped: Record<string, number> = {}
   ;(dailyEventsRaw || []).forEach((e: any) => {
     const day = e.triggered_at.split('T')[0]
@@ -81,7 +86,6 @@ export async function GET(req: NextRequest) {
     .map(([day, incidents]) => ({ day, incidents }))
     .sort((a, b) => a.day.localeCompare(b.day))
 
-  // Group trigger sources by type
   const triggerGrouped: Record<string, number> = {}
   ;(triggerEventsRaw || []).forEach((e: any) => {
     const type = e.trigger_type || 'unknown'
@@ -91,17 +95,16 @@ export async function GET(req: NextRequest) {
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
 
-  // Build funnel: total → called → answered → rescued
   const totalCount = totalIncidents || 0
-  const calledCount = (triggerEventsRaw || []).filter((e: any) => e.primary_contact_called !== null).length
-  const answeredCount = incidentsCallConn || 0
-  const rescuedCount = verifiedRescues || 0
+  const calledCount = contactsCalled || 0
+  const answeredCount = callsAnswered || 0
+  const feedbackGiven = feedbackCount || 0
 
   const funnel = [
     { name: 'Triggered', value: totalCount, pct: 100 },
     { name: 'Contact Called', value: calledCount, pct: totalCount > 0 ? Math.round((calledCount / totalCount) * 100) : 0 },
     { name: 'Call Answered', value: answeredCount, pct: totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0 },
-    { name: 'Rescued', value: rescuedCount, pct: totalCount > 0 ? Math.round((rescuedCount / totalCount) * 100) : 0 }
+    { name: 'Feedback Given', value: feedbackGiven, pct: totalCount > 0 ? Math.round((feedbackGiven / totalCount) * 100) : 0 }
   ]
 
   return NextResponse.json({
@@ -114,11 +117,11 @@ export async function GET(req: NextRequest) {
       total_incidents: totalIncidents || 0,
       total_incidents_trend: incidentsTrend.value,
       total_incidents_trend_direction: incidentsTrend.direction,
-      incidents_safe_self: incidentsSafeSelf || 0,
-      incidents_call_connected: incidentsCallConn || 0,
-      verified_rescues: verifiedRescues || 0,
-      verified_rescues_trend: rescuesTrend.value,
-      verified_rescues_trend_direction: rescuesTrend.direction,
+      feedback_received: feedbackCount || 0,
+      real_emergencies: realEmergencies || 0,
+      users_rescued: usersRescued || 0,
+      incidents_call_connected: callsAnswered || 0,
+      avg_rating: avgRating,
       events_last_24h: activeToday || 0,
       active_today_trend: null,
       active_today_trend_direction: 'neutral'

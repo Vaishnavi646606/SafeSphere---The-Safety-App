@@ -12,7 +12,6 @@ import {
   BarChart3,
   CheckSquare,
   ScrollText,
-  Mail,
   LogOut
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -80,7 +79,6 @@ export default function AdminSidebar() {
         items: [
           { label: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
           { label: 'Saved Verifications', href: '/admin/saved', icon: CheckSquare },
-          { label: 'Messages', href: '/admin/messages', icon: Mail },
           { label: 'Audit', href: '/admin/audit', icon: ScrollText }
         ]
       }
@@ -134,7 +132,7 @@ export default function AdminSidebar() {
                       href={item.href}
                       className={`mx-1 flex items-center gap-3 rounded-xl py-2.5 pr-3 text-sm font-medium transition-all duration-200 ${
                         active
-                          ? 'border-l-2 border-emerald-400 bg-emerald-500/10 pl-[10px] text-emerald-400'
+                          ? 'border-l-2 border-emerald-400 bg-emerald-500/10 pl-2.5 text-emerald-400'
                           : 'px-3 text-slate-400 hover:bg-white/5 hover:text-slate-200'
                       }`}
                     >

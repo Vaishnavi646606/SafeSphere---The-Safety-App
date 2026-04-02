@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useState } from 'react'
 import {
@@ -15,8 +15,8 @@ import {
 import {
   Users,
   AlertTriangle,
-  CheckCircle,
-  Shield,
+  MessageSquare,
+  Star,
   Activity,
   Phone,
   Heart,
@@ -35,11 +35,11 @@ interface Metrics {
   total_incidents: number
   total_incidents_trend: number | null
   total_incidents_trend_direction: 'up' | 'down' | 'neutral' | 'new'
-  incidents_safe_self: number
+  feedback_received: number
+  real_emergencies: number
+  users_rescued: number
   incidents_call_connected: number
-  verified_rescues: number
-  verified_rescues_trend: number | null
-  verified_rescues_trend_direction: 'up' | 'down' | 'neutral' | 'new'
+  avg_rating: number
   events_last_24h: number
   active_today_trend: number | null
   active_today_trend_direction: 'up' | 'down' | 'neutral' | 'new'
@@ -94,7 +94,7 @@ export default function DashboardPage() {
               className={`rounded-lg border px-3 py-1.5 text-xs transition-all ${
                 range === r
                   ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                  : 'border-white/[0.08] bg-white/5 text-slate-400 hover:text-white'
+                  : 'border-white/8 bg-white/5 text-slate-400 hover:text-white'
               }`}
             >
               {r}d
@@ -102,7 +102,7 @@ export default function DashboardPage() {
           ))}
           <button
             onClick={fetchMetrics}
-            className="rounded-lg border border-white/[0.08] bg-white/5 p-1.5 text-slate-400 transition-colors hover:text-white"
+            className="rounded-lg border border-white/8 bg-white/5 p-1.5 text-slate-400 transition-colors hover:text-white"
             title="Refresh"
           >
             <RefreshCw size={14} />
@@ -132,14 +132,13 @@ export default function DashboardPage() {
           loading={loading}
         />
         <StatsCard
-          label="Rescues"
-          value={metrics?.verified_rescues ?? 0}
-          icon={Heart}
-          color="#f43f5e"
-          trend={metrics?.verified_rescues_trend ?? null}
-          trendUp={metrics?.verified_rescues_trend_direction === 'up'}
-          trendDirection={metrics?.verified_rescues_trend_direction ?? 'neutral'}
-          subtitle="Admin verified"
+          label="Feedback Received"
+          value={metrics?.feedback_received ?? 0}
+          icon={MessageSquare}
+          color="#8b5cf6"
+          trend={null}
+          trendDirection="neutral"
+          subtitle="User responses"
           loading={loading}
         />
         <StatsCard
@@ -155,20 +154,20 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-4">
-        <StatsCard label="Incidents" value={metrics?.total_incidents ?? 0} icon={AlertTriangle} color="#f59e0b" loading={loading} />
-        <StatsCard label="Safe Acknowledged" value={metrics?.incidents_safe_self ?? 0} icon={CheckCircle} color="#10b981" loading={loading} />
+        <StatsCard label="Real Emergencies" value={metrics?.real_emergencies ?? 0} icon={AlertTriangle} color="#f43f5e" subtitle="Confirmed by user" loading={loading} />
+        <StatsCard label="Users Rescued" value={metrics?.users_rescued ?? 0} icon={Heart} color="#10b981" subtitle="Help received" loading={loading} />
         <StatsCard label="Call Connected" value={metrics?.incidents_call_connected ?? 0} icon={Phone} color="#3b82f6" loading={loading} />
-        <StatsCard label="Verified" value={metrics?.verified_rescues ?? 0} icon={Shield} color="#8b5cf6" loading={loading} />
+        <StatsCard label="Avg Rating" value={metrics?.avg_rating ?? 0} icon={Star} color="#f59e0b" subtitle="Out of 5" loading={loading} />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-3">
-        <div className="rounded-2xl border border-white/[0.06] bg-[#111219] p-5 xl:col-span-2">
+        <div className="rounded-2xl border border-white/6 bg-[#111219] p-5 xl:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-white">Emergency Trends</h3>
             <BarChart3 size={16} className="text-slate-500" />
           </div>
           {loading || dailyData.length === 0 ? (
-            <div className="flex min-h-[200px] flex-col items-center justify-center text-center">
+            <div className="flex min-h-50 flex-col items-center justify-center text-center">
               <Radio size={28} className="text-slate-700" />
               <p className="mt-2 text-sm text-slate-600">{loading ? 'Loading trend data...' : 'No trend data available'}</p>
             </div>
@@ -186,13 +185,13 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-white/[0.06] bg-[#111219] p-5">
+        <div className="rounded-2xl border border-white/6 bg-[#111219] p-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-white">Trigger Sources</h3>
             <AlertTriangle size={16} className="text-slate-500" />
           </div>
           {loading || triggerData.length === 0 ? (
-            <div className="flex min-h-[200px] flex-col items-center justify-center text-center">
+            <div className="flex min-h-50 flex-col items-center justify-center text-center">
               <Radio size={28} className="text-slate-700" />
               <p className="mt-2 text-sm text-slate-600">{loading ? 'Loading trigger data...' : 'No trigger data available'}</p>
             </div>
@@ -210,10 +209,10 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/[0.06] bg-[#111219] p-5">
+      <section className="rounded-2xl border border-white/6 bg-[#111219] p-5">
         <h3 className="mb-4 text-sm font-semibold text-white">Response Funnel</h3>
         {loading || funnelData.length === 0 ? (
-          <div className="flex min-h-[160px] flex-col items-center justify-center text-center">
+          <div className="flex min-h-40 flex-col items-center justify-center text-center">
             <Radio size={28} className="text-slate-700" />
             <p className="mt-2 text-sm text-slate-600">{loading ? 'Loading funnel data...' : 'No incident data available'}</p>
           </div>

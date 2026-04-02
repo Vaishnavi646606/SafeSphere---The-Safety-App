@@ -11,7 +11,6 @@ const pageMeta: Record<string, { title: string; section: string }> = {
   '/admin/feedback': { title: 'Feedback', section: 'Safety' },
   '/admin/analytics': { title: 'Analytics', section: 'Reports' },
   '/admin/saved': { title: 'Saved Verifications', section: 'Reports' },
-  '/admin/messages': { title: 'Messages', section: 'Reports' },
   '/admin/audit': { title: 'Audit', section: 'Reports' }
 }
 

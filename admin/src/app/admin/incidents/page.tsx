@@ -54,7 +54,29 @@ export default function IncidentsPage() {
   const [verifyingId, setVerifyingId] = useState<string | null>(null)
   const [verifyForm, setVerifyForm] = useState<Record<string, { evidence_type: string; notes: string }>>({})
   const [verifySuccess, setVerifySuccess] = useState<Record<string, boolean>>({})
+    const [updatingOutcome, setUpdatingOutcome] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState('all')
+
+    const updateOutcome = async (incidentId: string, resolutionType: string) => {
+      setUpdatingOutcome(incidentId)
+      try {
+        const res = await fetch(`/api/admin/incidents/${incidentId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resolution_type: resolutionType })
+        })
+        if (!res.ok) throw new Error('Failed to update outcome')
+        setIncidents((prev) =>
+          prev.map((item) =>
+            item.id === incidentId ? { ...item, resolution_type: resolutionType } : item
+          )
+        )
+      } catch (error) {
+        console.error('Failed to update outcome:', error)
+      } finally {
+        setUpdatingOutcome(null)
+      }
+    }
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -247,7 +269,7 @@ export default function IncidentsPage() {
                           />
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {incident.primary_contact_answered ? (
+                          {incident.primary_contact_answered || incident.secondary_contact_answered || incident.tertiary_contact_answered ? (
                             <StatusBadge status="success" label="Answered" size="sm" icon={false} />
                           ) : incident.primary_contact_called ? (
                             <StatusBadge status="pending" label="Called" size="sm" icon={false} />
@@ -319,10 +341,20 @@ export default function IncidentsPage() {
                                   {incident.secondary_contact_answered ? (
                                     <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">Yes</span>
                                   ) : (
+                                    incident.secondary_contact_called ? (
                                     <span className="rounded bg-rose-500/20 px-2 py-0.5 text-xs text-rose-300">No</span>
+                                  ) : null
                                   )}
                                 </p>
                                 <p>Tertiary contact: {incident.tertiary_contact_called || 'None'}</p>
+                                                                <p>
+                                                                  Tertiary answered:{' '}
+                                                                  {incident.tertiary_contact_answered ? (
+                                                                    <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">Yes</span>
+                                                                  ) : incident.tertiary_contact_called ? (
+                                                                    <span className="rounded bg-rose-500/20 px-2 py-0.5 text-xs text-rose-300">No</span>
+                                                                  ) : null}
+                                                                </p>
                                 <p>SMS sent to: {incident.sms_sent_to || 'None'}</p>
                               </div>
 
@@ -359,6 +391,30 @@ export default function IncidentsPage() {
                                 className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400 disabled:opacity-60"
                               >
                                 {savingNotes === incident.id ? 'Saving...' : 'Save Notes'}
+
+                                                          <div className="mt-4 rounded-xl border border-white/[0.08] bg-[#111219] p-4">
+                                                            <h4 className="text-xs uppercase tracking-widest text-slate-500">Set Outcome</h4>
+                                                            <div className="mt-2 flex items-center gap-3">
+                                                              <select
+                                                                value={incident.resolution_type || ''}
+                                                                onChange={(e) => updateOutcome(incident.id, e.target.value)}
+                                                                disabled={updatingOutcome === incident.id}
+                                                                className="rounded-xl border border-white/10 bg-[#16171f] px-3 py-2 text-sm text-white"
+                                                              >
+                                                                <option value="">Pending</option>
+                                                                <option value="rescued">Rescued</option>
+                                                                <option value="safe_contact">Safe - Contact Helped</option>
+                                                                <option value="safe_self">Safe - Self Resolved</option>
+                                                                <option value="false_alarm">False Alarm</option>
+                                                                <option value="no_response">No Response</option>
+                                                                <option value="test">Test Event</option>
+                                                              </select>
+                                                              {updatingOutcome === incident.id && (
+                                                                <span className="text-xs text-slate-400">Saving...</span>
+                                                              )}
+                                                            </div>
+                                                          </div>
+
                               </button>
                             </div>
 

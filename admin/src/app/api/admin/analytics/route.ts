@@ -19,8 +19,11 @@ export async function GET(req: NextRequest) {
     const { data: allEvents } = await db
       .from('emergency_events')
       .select(`
-        id, triggered_at, resolution_type, trigger_type,
-        primary_contact_called, primary_contact_answered, time_to_resolve_s, status
+        id, triggered_at, resolved_at, resolution_type, trigger_type, status,
+        primary_contact_called, primary_contact_answered,
+        secondary_contact_called, secondary_contact_answered,
+        tertiary_contact_called, tertiary_contact_answered,
+        time_to_resolve_s
       `)
       .gte('triggered_at', since)
     
@@ -57,31 +60,32 @@ export async function GET(req: NextRequest) {
 
     const total = allEvents?.length || 0
 
-    const callsMade =
-      allEvents?.filter(
-        (e: any) =>
-          e.primary_contact_called !== null &&
-          e.primary_contact_called !== undefined &&
-          e.primary_contact_called !== ''
-      ).length || 0
+    let callsMade = 0
+    ;(allEvents || []).forEach((e: any) => {
+      if (e.primary_contact_called) callsMade++
+      if (e.secondary_contact_called) callsMade++
+      if (e.tertiary_contact_called) callsMade++
+    })
 
-    const successful =
-      allEvents?.filter((e: any) => {
-        const rt = e.resolution_type || ''
-        return ['rescued', 'safe_contact', 'safe_self'].includes(rt)
-      }).length || 0
+    const successful = allEvents?.filter((e: any) =>
+      e.primary_contact_answered === true ||
+      e.secondary_contact_answered === true ||
+      e.tertiary_contact_answered === true
+    ).length || 0
 
     const responseRate = total > 0 ? Math.round((successful / total) * 100) : 0
 
-    const validTimes =
-      allEvents
-        ?.filter((e: any) => e.time_to_resolve_s && e.time_to_resolve_s > 0)
-        .map((e: any) => e.time_to_resolve_s as number) || []
+    const validTimes: number[] = []
+    ;(allEvents || []).forEach((e: any) => {
+      if (e.triggered_at && e.resolved_at) {
+        const diffMs = new Date(e.resolved_at).getTime() - new Date(e.triggered_at).getTime()
+        if (diffMs > 0) validTimes.push(diffMs / 1000)
+      }
+    })
 
-    const avgResponseTime =
-      validTimes.length > 0
-        ? Math.round(((validTimes.reduce((a: number, b: number) => a + b, 0) / validTimes.length / 60) * 10)) / 10
-        : 0
+    const avgResponseTime = validTimes.length > 0
+      ? Math.round((validTimes.reduce((a: number, b: number) => a + b, 0) / validTimes.length / 60) * 10) / 10
+      : 0
     
     // 3. Get feedback statistics
     const { data: feedbackData } = await db

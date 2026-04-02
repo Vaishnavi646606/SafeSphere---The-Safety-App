@@ -741,18 +741,7 @@ public class MainActivity extends AppCompatActivity {
                         "3. Allow background activity / No battery restrictions\n\n" +
                         "Tap \"Open Settings\" to go to SafeSphere's app settings page, " +
                         "then look under \"Other permissions\" or \"Battery\".")
-                .setPositiveButton("Open Settings", (d, w) -> {
-                    try {
-                        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-                        intent.setData(Uri.parse("package:" + getPackageName()));
-                        startActivity(intent);
-                    } catch (Exception e) {
-                        Toast.makeText(this,
-                                "Go to Settings → Apps → SafeSphere → Other permissions",
-                                Toast.LENGTH_LONG).show();
-                    }
-                })
-                .setNegativeButton("OK", null)
+                .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
                 .setCancelable(true)
                 .show();
     }

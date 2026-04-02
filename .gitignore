@@ -14,3 +14,16 @@ admin/.env.local
 .DS_Store
 *.log
 Thumbs.db
+
+# Android build artifacts
+android/build/
+
+# Android secrets (already have local.properties but adding explicit patterns)
+android/local.properties
+android/**/*.env
+android/**/secrets.properties
+
+# Admin secrets
+admin/.env
+admin/.env.*
+!admin/.env.example

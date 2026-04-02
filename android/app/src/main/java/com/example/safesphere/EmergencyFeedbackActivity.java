@@ -87,6 +87,9 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
         if (eventId == null || eventId.trim().isEmpty()) {
             Toast.makeText(this, "No emergency event to provide feedback for", Toast.LENGTH_LONG).show();
             Log.e(TAG, "Missing event_id for feedback");
+            Intent intentToMain = new Intent(this, MainActivity.class);
+            intentToMain.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intentToMain);
             finish();
             return;
         }
@@ -176,6 +179,9 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
         // Skip button
         btnSkip.setOnClickListener(v -> {
             Log.d(TAG, "User skipped feedback");
+            Intent intentToMain = new Intent(this, MainActivity.class);
+            intentToMain.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intentToMain);
             finish();
         });
         
@@ -228,6 +234,9 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
                         Toast.makeText(EmergencyFeedbackActivity.this,
                                 "Thank you for your feedback!", Toast.LENGTH_SHORT).show();
                         Log.d(TAG, "Feedback submitted successfully: " + response.message);
+                        Intent intentToMain = new Intent(EmergencyFeedbackActivity.this, MainActivity.class);
+                        intentToMain.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                        startActivity(intentToMain);
                         finish();
                     } else {
                         Toast.makeText(EmergencyFeedbackActivity.this,

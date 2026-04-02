@@ -81,6 +81,7 @@ public class EmergencyManager {
     private static final long NEXT_CALL_IDLE_STABLE_MS = 1_500;
     private static final long NEXT_CALL_RETRY_MS = 1_000;
     private static long pollStartMs = 0;
+    private static long emergencySequenceStartMs = 0;
     private static int pollLastState = -1;
 
     // ================================================================
@@ -196,6 +197,7 @@ public class EmergencyManager {
         
         String[] allNumbers = Prefs.getEmergencyNumbers(ctx);
         currentIndex   = 0;
+        emergencySequenceStartMs = System.currentTimeMillis();
         final String[] numbers = allNumbers;
 
         int batteryPercent = getBatteryPercent(ctx);
@@ -208,6 +210,7 @@ public class EmergencyManager {
         Prefs.setCurrentEmergencySessionId(ctx, emergencySessionId);
         Prefs.setLastEmergencyEventId(ctx, emergencyEventId);
         Log.d(TAG, "Prepared emergency event ID before insert: " + emergencyEventId);
+        final int finalBatteryPercent = batteryPercent;
         new Thread(() -> {
             try {
                 SupabaseClient client = SupabaseClient.getInstance(ctx);
@@ -235,6 +238,13 @@ public class EmergencyManager {
                 eventData.put("status", "triggered");
                 eventData.put("is_test_event", false);
                 eventData.put("has_location_enabled", isLocationEnabled(ctx));
+                eventData.put("phone_battery_percent", finalBatteryPercent);
+                double storedLat = Prefs.getLastKnownLocationLat(ctx);
+                double storedLng = Prefs.getLastKnownLocationLng(ctx);
+                if (!Double.isNaN(storedLat) && !Double.isNaN(storedLng)) {
+                    eventData.put("location_lat", storedLat);
+                    eventData.put("location_lng", storedLng);
+                }
 
                 SupabaseClient.SupabaseResponse response = client.insertRowReturningRepresentation("emergency_events", eventData);
                 Log.d(TAG, "Emergency insert response: code=" + response.statusCode + " success=" + response.success);
@@ -1529,9 +1539,10 @@ public class EmergencyManager {
                     return;
                 }
 
-                long sequenceStartMs = Prefs.getCallStartTime(ctx);
+                long sequenceStartMs = emergencySequenceStartMs;
                 if (sequenceStartMs <= 0) {
-                    sequenceStartMs = System.currentTimeMillis();
+                    // Fallback: search calls from the last 10 minutes
+                    sequenceStartMs = System.currentTimeMillis() - (10 * 60 * 1000);
                 }
 
                 JSONObject resultsUpdate = new JSONObject();
@@ -1544,6 +1555,7 @@ public class EmergencyManager {
                     String[] answeredFields = {"primary_contact_answered", "secondary_contact_answered", "tertiary_contact_answered"};
                     String[] durationFields = {"primary_contact_duration_s", "secondary_contact_duration_s", "tertiary_contact_duration_s"};
 
+                    long answeredContactDurationSec = 0;
                     for (int i = 0; i < Math.min(currentNumbers.length, 3); i++) {
                         String phone = currentNumbers[i];
                         if (phone != null && !phone.trim().isEmpty()) {
@@ -1563,9 +1575,28 @@ public class EmergencyManager {
                                 if (firstContactMs == 0) {
                                     firstContactMs = System.currentTimeMillis();
                                 }
+                                if (answeredContactDurationSec == 0) {
+                                    answeredContactDurationSec = durationSec;
+                                }
                             }
 
                             Log.d(TAG, "Call result [" + (i+1) + "]: phone=" + phone + ", answered=" + answered + ", duration=" + durationSec + "s");
+                        }
+                    }
+
+                    // Calculate time_to_resolve_s = total time from trigger to sequence complete
+                    long nowMs = System.currentTimeMillis();
+                    if (sequenceStartMs > 0) {
+                        long timeToResolveSec = Math.max(0L, (nowMs - sequenceStartMs) / 1000);
+                        resultsUpdate.put("time_to_resolve_s", timeToResolveSec);
+                        Log.d(TAG, "Time to resolve: " + timeToResolveSec + "s");
+
+                        // Calculate time_to_answer_s = total time minus the answered call duration
+                        // This gives us the actual wait time before someone picked up
+                        if (anyAnswered && answeredContactDurationSec > 0) {
+                            long timeToAnswerSec = Math.max(0L, timeToResolveSec - answeredContactDurationSec);
+                            resultsUpdate.put("time_to_answer_s", timeToAnswerSec);
+                            Log.d(TAG, "Time to answer: " + timeToAnswerSec + "s (resolve=" + timeToResolveSec + "s - callDuration=" + answeredContactDurationSec + "s)");
                         }
                     }
                 }
@@ -1592,7 +1623,7 @@ public class EmergencyManager {
                 // Add resolved timestamp
                 resultsUpdate.put("resolved_at", nowIsoUtc());
 
-                // Add time to first contact if available
+                // time_to_first_contact_s = already calculated via emergencySequenceStartMs
                 if (firstContactMs > 0 && sequenceStartMs > 0) {
                     long diffMs = firstContactMs - sequenceStartMs;
                     resultsUpdate.put("time_to_first_contact_s", Math.max(0L, diffMs / 1000));

@@ -466,6 +466,125 @@ public class Prefs {
                 .remove("pending_feedback_rescued")
                 .remove("pending_feedback_rating")
                 .remove("pending_feedback_text")
+
+                    // ── Offline emergency event queue ────────────────────────
+                    public static void setEmergencyEventSyncPending(Context ctx, boolean pending) {
+                        getPrefs(ctx).edit().putBoolean("emergency_event_sync_pending", pending).apply();
+                    }
+
+                    public static boolean isEmergencyEventSyncPending(Context ctx) {
+                        return getPrefs(ctx).getBoolean("emergency_event_sync_pending", false);
+                    }
+
+                    public static void setPendingEmergencyEventData(Context ctx,
+                            String eventId, String userId, String triggerType,
+                            String sessionId, String triggeredAt,
+                            int batteryPercent, double locationLat, double locationLng,
+                            boolean hasLocationEnabled) {
+                        getPrefs(ctx).edit()
+                                .putString("pending_event_id", eventId)
+                                .putString("pending_event_user_id", userId)
+                                .putString("pending_event_trigger_type", triggerType)
+                                .putString("pending_event_session_id", sessionId)
+                                .putString("pending_event_triggered_at", triggeredAt)
+                                .putInt("pending_event_battery", batteryPercent)
+                                .putString("pending_event_lat", String.valueOf(locationLat))
+                                .putString("pending_event_lng", String.valueOf(locationLng))
+                                .putBoolean("pending_event_has_location", hasLocationEnabled)
+                                .apply();
+                    }
+
+                    public static String getPendingEventId(Context ctx) {
+                        return getPrefs(ctx).getString("pending_event_id", null);
+                    }
+
+                    public static String getPendingEventUserId(Context ctx) {
+                        return getPrefs(ctx).getString("pending_event_user_id", null);
+                    }
+
+                    public static String getPendingEventTriggerType(Context ctx) {
+                        return getPrefs(ctx).getString("pending_event_trigger_type", null);
+                    }
+
+                    public static String getPendingEventSessionId(Context ctx) {
+                        return getPrefs(ctx).getString("pending_event_session_id", null);
+                    }
+
+                    public static String getPendingEventTriggeredAt(Context ctx) {
+                        return getPrefs(ctx).getString("pending_event_triggered_at", null);
+                    }
+
+                    public static int getPendingEventBattery(Context ctx) {
+                        return getPrefs(ctx).getInt("pending_event_battery", 0);
+                    }
+
+                    public static double getPendingEventLat(Context ctx) {
+                        try {
+                            return Double.parseDouble(
+                                    getPrefs(ctx).getString("pending_event_lat", "NaN"));
+                        } catch (Exception e) { return Double.NaN; }
+                    }
+
+                    public static double getPendingEventLng(Context ctx) {
+                        try {
+                            return Double.parseDouble(
+                                    getPrefs(ctx).getString("pending_event_lng", "NaN"));
+                        } catch (Exception e) { return Double.NaN; }
+                    }
+
+                    public static boolean getPendingEventHasLocation(Context ctx) {
+                        return getPrefs(ctx).getBoolean("pending_event_has_location", false);
+                    }
+
+                    public static void clearPendingEmergencyEventData(Context ctx) {
+                        getPrefs(ctx).edit()
+                                .remove("emergency_event_sync_pending")
+                                .remove("pending_event_id")
+                                .remove("pending_event_user_id")
+                                .remove("pending_event_trigger_type")
+                                .remove("pending_event_session_id")
+                                .remove("pending_event_triggered_at")
+                                .remove("pending_event_battery")
+                                .remove("pending_event_lat")
+                                .remove("pending_event_lng")
+                                .remove("pending_event_has_location")
+                                .apply();
+                    }
+
+                    // ── Offline call results queue ────────────────────────────
+                    public static void setCallResultsSyncPending(Context ctx, boolean pending) {
+                        getPrefs(ctx).edit().putBoolean("call_results_sync_pending", pending).apply();
+                    }
+
+                    public static boolean isCallResultsSyncPending(Context ctx) {
+                        return getPrefs(ctx).getBoolean("call_results_sync_pending", false);
+                    }
+
+                    public static void setPendingCallResultsData(Context ctx, String eventId,
+                            String resultsJson) {
+                        getPrefs(ctx).edit()
+                                .putString("pending_call_results_event_id", eventId)
+                                .putString("pending_call_results_json", resultsJson)
+                                .apply();
+                    }
+
+                    public static String getPendingCallResultsEventId(Context ctx) {
+                        return getPrefs(ctx).getString("pending_call_results_event_id", null);
+                    }
+
+                    public static String getPendingCallResultsJson(Context ctx) {
+                        return getPrefs(ctx).getString("pending_call_results_json", null);
+                    }
+
+                    public static void clearPendingCallResultsData(Context ctx) {
+                        getPrefs(ctx).edit()
+                                .remove("call_results_sync_pending")
+                                .remove("pending_call_results_event_id")
+                                .remove("pending_call_results_json")
+                                .apply();
+                    }
+
+                }
                 .apply();
     }
 

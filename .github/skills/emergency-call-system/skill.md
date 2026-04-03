@@ -350,3 +350,11 @@ for (String contact : contacts) {
 - Documented battery optimization via knapsack algorithm
 - Included testing checklist and debugging steps
 - Added code modification template
+- 2026-04-03 - Fixed trigger_type always showing LIVE
+    Root cause: SafeSphereService.triggerEmergency() always called triggerEmergencyLive()
+    Fix: New EmergencyManager.triggerEmergencyWithSource(ctx, source) method
+    Now correctly captures trigger_type: "SHAKE", "KEYWORD", "MANUAL"
+- 2026-04-03 - Emergency flow now fully offline-capable
+    Event insert queued if offline, SyncWorker syncs when internet returns
+    Call results PATCH queued offline, synced after event insert succeeds
+    Prevents foreign key violations with strict dependency ordering

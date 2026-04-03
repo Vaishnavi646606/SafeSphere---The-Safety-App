@@ -104,3 +104,6 @@ Emergency feedback (EmergencyFeedbackActivity.submitFeedback):
 - Survives app kill, retries on failure
 - 2026-04-03 - Fixed SyncWorker feedback retry loop on foreign key error (23503)
   Clear pending feedback instead of retrying when event does not exist in Supabase
+- 2026-04-03 - Added offline emergency event insert queue
+- 2026-04-03 - Added offline call results PATCH queue
+- 2026-04-03 - SyncWorker processes in dependency order: event → callResults → profile → feedback

@@ -18,7 +18,7 @@ import org.json.JSONObject;
 /**
  * WorkManager worker that syncs pending offline changes to Supabase.
  * Runs automatically when internet becomes available, even if app is killed.
- * Handles: pending profile updates, pending feedback submissions.
+ * Handles: pending emergency events, pending call results, pending profile updates, pending feedback submissions.
  */
 public class SyncWorker extends Worker {
 
@@ -34,18 +34,124 @@ public class SyncWorker extends Worker {
         Context ctx = getApplicationContext();
         boolean anyFailed = false;
 
-        // Sync pending profile update
-        if (Prefs.isProfileSyncPending(ctx)) {
-            anyFailed = !syncProfile(ctx);
+        // ORDER MATTERS — event must exist before call results and feedback
+
+        // Step 1 — sync pending emergency event insert
+        if (Prefs.isEmergencyEventSyncPending(ctx)) {
+            boolean ok = syncEmergencyEvent(ctx);
+            if (!ok) anyFailed = true;
         }
 
-        // Sync pending feedback
-        if (Prefs.isFeedbackSyncPending(ctx)) {
-            boolean feedbackOk = syncFeedback(ctx);
-            if (!feedbackOk) anyFailed = true;
+        // Step 2 — sync pending call results PATCH
+        // Only attempt if event insert is no longer pending
+        if (!Prefs.isEmergencyEventSyncPending(ctx)
+                && Prefs.isCallResultsSyncPending(ctx)) {
+            boolean ok = syncCallResults(ctx);
+            if (!ok) anyFailed = true;
+        }
+
+        // Step 3 — sync pending profile update
+        if (Prefs.isProfileSyncPending(ctx)) {
+            boolean ok = syncProfile(ctx);
+            if (!ok) anyFailed = true;
+        }
+
+        // Step 4 — sync pending feedback
+        // Only attempt if event insert is no longer pending
+        if (!Prefs.isEmergencyEventSyncPending(ctx)
+                && Prefs.isFeedbackSyncPending(ctx)) {
+            boolean ok = syncFeedback(ctx);
+            if (!ok) anyFailed = true;
         }
 
         return anyFailed ? Result.retry() : Result.success();
+    }
+
+    private boolean syncEmergencyEvent(Context ctx) {
+        try {
+            String eventId    = Prefs.getPendingEventId(ctx);
+            String userId     = Prefs.getPendingEventUserId(ctx);
+            String triggerType = Prefs.getPendingEventTriggerType(ctx);
+            String sessionId  = Prefs.getPendingEventSessionId(ctx);
+            String triggeredAt = Prefs.getPendingEventTriggeredAt(ctx);
+
+            if (eventId == null || userId == null) {
+                Prefs.clearPendingEmergencyEventData(ctx);
+                return true;
+            }
+
+            JSONObject eventData = new JSONObject();
+            eventData.put("id", eventId);
+            eventData.put("user_id", userId);
+            eventData.put("trigger_type",
+                    triggerType != null ? triggerType : "UNKNOWN");
+            eventData.put("session_id", sessionId);
+            eventData.put("triggered_at",
+                    triggeredAt != null ? triggeredAt :
+                    SupabaseClient.toIso8601(System.currentTimeMillis()));
+            eventData.put("status", "triggered");
+            eventData.put("is_test_event", false);
+            eventData.put("has_location_enabled",
+                    Prefs.getPendingEventHasLocation(ctx));
+            eventData.put("phone_battery_percent",
+                    Prefs.getPendingEventBattery(ctx));
+
+            double lat = Prefs.getPendingEventLat(ctx);
+            double lng = Prefs.getPendingEventLng(ctx);
+            if (!Double.isNaN(lat) && !Double.isNaN(lng)) {
+                eventData.put("location_lat", lat);
+                eventData.put("location_lng", lng);
+            }
+
+            SupabaseClient client = SupabaseClient.getInstance(ctx);
+            SupabaseClient.SupabaseResponse response =
+                    client.insertRowReturningRepresentation(
+                            "emergency_events", eventData);
+
+            if (response.success) {
+                Prefs.clearPendingEmergencyEventData(ctx);
+                Log.d(TAG, "Emergency event synced successfully: " + eventId);
+                // Also increment total emergencies
+                client.incrementTotalEmergencies(userId);
+                return true;
+            } else {
+                Log.w(TAG, "Emergency event sync failed: " + response.message);
+                return false;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Emergency event sync exception", e);
+            return false;
+        }
+    }
+
+    private boolean syncCallResults(Context ctx) {
+        try {
+            String eventId     = Prefs.getPendingCallResultsEventId(ctx);
+            String resultsJson = Prefs.getPendingCallResultsJson(ctx);
+
+            if (eventId == null || resultsJson == null) {
+                Prefs.clearPendingCallResultsData(ctx);
+                return true;
+            }
+
+            JSONObject resultsUpdate = new JSONObject(resultsJson);
+
+            SupabaseClient client = SupabaseClient.getInstance(ctx);
+            SupabaseClient.SupabaseResponse response =
+                    client.updateEmergencyEventResults(eventId, resultsUpdate);
+
+            if (response.success) {
+                Prefs.clearPendingCallResultsData(ctx);
+                Log.d(TAG, "Call results synced successfully for event: " + eventId);
+                return true;
+            } else {
+                Log.w(TAG, "Call results sync failed: " + response.message);
+                return false;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Call results sync exception", e);
+            return false;
+        }
     }
 
     private boolean syncProfile(Context ctx) {
@@ -136,7 +242,7 @@ public class SyncWorker extends Worker {
     }
 
     /**
-     * Call this from ProfileActivity and EmergencyFeedbackActivity
+     * Call this from ProfileActivity,  EmergencyFeedbackActivity, or EmergencyManager
      * after saving data to Prefs offline.
      * WorkManager will run this automatically when internet returns,
      * even if the app is completely killed.

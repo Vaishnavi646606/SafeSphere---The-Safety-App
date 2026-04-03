@@ -370,6 +370,19 @@ Feedback:
            + SyncWorker.scheduleSyncWhenOnline() called
   Sync: WorkManager SyncWorker handles feedback sync automatically
 
+Emergency events:
+  Online: inserted to emergency_events table immediately
+  Offline: saved to Prefs + Prefs.setEmergencyEventSyncPending = true
+           + SyncWorker.scheduleSyncWhenOnline() called
+  Sync: WorkManager SyncWorker syncs event before call results and feedback
+
+Call results:
+  Online: PATCH to emergency_events table immediately (after all calls complete)
+  Offline: saved to Prefs + Prefs.setCallResultsSyncPending = true
+           + SyncWorker.scheduleSyncWhenOnline() called
+  Sync: WorkManager SyncWorker syncs call results after event insert succeeds
+  Sync order in SyncWorker: event → callResults → profile → feedback
+
 SyncWorker (android/app/src/main/java/com/example/safesphere/SyncWorker.java):
   - Extends Worker (WorkManager)
   - Constraint: NetworkType.CONNECTED (only runs when internet available)
@@ -486,6 +499,9 @@ Android:
   Register shows correct error when offline (no internet message)
   GPS prompt shown when protection enabled and GPS is off (optional, dismissable)
   Battery optimization prompt (once only)
+    ✅ Trigger type correctly captured: SHAKE, KEYWORD, MANUAL (not all showing LIVE)
+    ✅ Offline emergency event insert → WorkManager syncs when internet returns
+    ✅ Call results PATCH queued offline → syncs after event insert succeeds
   API keys in local.properties (not hardcoded)
 
 Admin Dashboard:

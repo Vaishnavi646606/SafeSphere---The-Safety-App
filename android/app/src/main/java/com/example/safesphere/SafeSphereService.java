@@ -850,10 +850,10 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
 
         // Trigger emergency workflow — Vosk will restart via EMERGENCY_SEQUENCE_COMPLETE broadcast
         try {
-            Log.d(TAG, "Calling EmergencyManager.triggerEmergencyLive()");
-            EmergencyManager.triggerEmergencyLive(ctx);
+            Log.d(TAG, "Calling EmergencyManager.triggerEmergencyWithSource()");
+            EmergencyManager.triggerEmergencyWithSource(ctx, source);
         } catch (Exception e) {
-            Log.e(TAG, "❌ CRITICAL: EmergencyManager.triggerEmergencyLive() FAILED", e);
+            Log.e(TAG, "❌ CRITICAL: EmergencyManager.triggerEmergencyWithSource() FAILED", e);
             // If emergency failed entirely, restart Vosk now so we keep listening
             restartVoskNow();
         }

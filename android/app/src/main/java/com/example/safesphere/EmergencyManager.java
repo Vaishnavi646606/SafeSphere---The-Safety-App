@@ -144,6 +144,29 @@ public class EmergencyManager {
 
         // Run on main thread — SmsManager on Android 12+ requires main thread
         new Handler(Looper.getMainLooper()).post(() -> sendEmergency(ctx.getApplicationContext(), true, "LIVE"));
+
+        /**
+         * Trigger emergency with the correct source type.
+         * Use this instead of triggerEmergencyLive() when source is known.
+         * @param ctx application context
+         * @param source the trigger source: "SHAKE", "KEYWORD", "MANUAL", or "LIVE"
+         */
+        public static void triggerEmergencyWithSource(Context ctx, String source) {
+            String caller = detectTriggerCaller();
+            Log.d(TAG, "🚨 triggerEmergencyWithSource() source=" + source + " caller=" + caller);
+            Log.i(TAG, FLOW + "_TRIGGER mode=" + source);
+            liveHandler.removeCallbacksAndMessages(null);
+            liveSentCount = 0;
+
+            java.util.Map<String, Object> triggerPayload = new java.util.HashMap<>();
+            triggerPayload.put("source", source);
+            triggerPayload.put("caller", caller);
+            String sid = Prefs.ensureSessionId(ctx);
+            AnalyticsQueue.get(ctx).enqueue(EventType.TRIGGER_SOURCE, sid, triggerPayload);
+
+            new Handler(Looper.getMainLooper()).post(() ->
+                    sendEmergency(ctx.getApplicationContext(), true, source));
+        }
     }
 
     public static void triggerEmergencyCurrent(Context ctx) {
@@ -247,21 +270,56 @@ public class EmergencyManager {
                 }
 
                 SupabaseClient.SupabaseResponse response = client.insertRowReturningRepresentation("emergency_events", eventData);
-                Log.d(TAG, "Emergency insert response: code=" + response.statusCode + " success=" + response.success);
-                Log.d(TAG, "Emergency insert response body: " + response.message);
-                if (!response.success) {
-                    Log.w(TAG, "Supabase emergency event insert failed: " + response.message);
+
+                // Check connectivity before insert
+                android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                        ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+                android.net.NetworkInfo ni = cm.getActiveNetworkInfo();
+                boolean isOnline = ni != null && ni.isConnected();
+
+                if (!isOnline) {
+                    // Offline — save event data locally for later sync
+                    Log.w(TAG, "Offline — queuing emergency event for later sync: " + emergencyEventId);
                     Prefs.setLastEmergencyEventId(ctx, emergencyEventId);
+                    double lat = Prefs.getLastKnownLocationLat(ctx);
+                    double lng = Prefs.getLastKnownLocationLng(ctx);
+                    Prefs.setPendingEmergencyEventData(ctx,
+                            emergencyEventId, userId, triggerType,
+                            emergencySessionId, nowIsoUtc(),
+                            finalBatteryPercent, lat, lng,
+                            isLocationEnabled(ctx));
+                    Prefs.setEmergencyEventSyncPending(ctx, true);
+                    SyncWorker.scheduleSyncWhenOnline(ctx);
                 } else {
-                    String actualEventId = parseInsertedEmergencyEventId(response.message);
-                    if (actualEventId != null && !actualEventId.trim().isEmpty()) {
-                        Prefs.setLastEmergencyEventId(ctx, actualEventId);
-                        Log.d(TAG, "Stored actual emergency event ID from Supabase response: " + actualEventId);
-                    } else {
+                    SupabaseClient.SupabaseResponse response2 =
+                            client.insertRowReturningRepresentation("emergency_events", eventData);
+                    Log.d(TAG, "Emergency insert response: code=" + response2.statusCode
+                            + " success=" + response2.success);
+                    Log.d(TAG, "Emergency insert response body: " + response2.message);
+                    if (!response2.success) {
+                        // Online but insert failed — queue for retry
+                        Log.w(TAG, "Emergency insert failed, queuing for retry: " + response2.message);
                         Prefs.setLastEmergencyEventId(ctx, emergencyEventId);
-                        Log.w(TAG, "Insert response did not return an event ID. Falling back to generated ID: " + emergencyEventId);
+                        double lat = Prefs.getLastKnownLocationLat(ctx);
+                        double lng = Prefs.getLastKnownLocationLng(ctx);
+                        Prefs.setPendingEmergencyEventData(ctx,
+                                emergencyEventId, userId, triggerType,
+                                emergencySessionId, nowIsoUtc(),
+                                finalBatteryPercent, lat, lng,
+                                isLocationEnabled(ctx));
+                        Prefs.setEmergencyEventSyncPending(ctx, true);
+                        SyncWorker.scheduleSyncWhenOnline(ctx);
+                    } else {
+                        String actualEventId = parseInsertedEmergencyEventId(response2.message);
+                        if (actualEventId != null && !actualEventId.trim().isEmpty()) {
+                            Prefs.setLastEmergencyEventId(ctx, actualEventId);
+                            Log.d(TAG, "Stored actual event ID: " + actualEventId);
+                        } else {
+                            Prefs.setLastEmergencyEventId(ctx, emergencyEventId);
+                            Log.w(TAG, "No event ID in response, using generated: " + emergencyEventId);
+                        }
+                        client.incrementTotalEmergencies(userId);
                     }
-                    client.incrementTotalEmergencies(userId);
                 }
             } catch (Exception e) {
                 Log.w(TAG, "Supabase emergency event insert exception", e);
@@ -1631,13 +1689,31 @@ public class EmergencyManager {
 
                 // Send update to Supabase
                 Log.d(TAG, "Updating emergency event " + eventId + " with call results: " + resultsUpdate.toString());
-                SupabaseClient.SupabaseResponse response = SupabaseClient.getInstance(ctx)
-                        .updateEmergencyEventResults(eventId, resultsUpdate);
 
-                if (!response.success) {
-                    Log.w(TAG, "Failed to update call results to Supabase: " + response.message);
+                // Check connectivity before PATCH
+                android.net.ConnectivityManager cmr = (android.net.ConnectivityManager)
+                        ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+                android.net.NetworkInfo nir = cmr.getActiveNetworkInfo();
+                boolean isOnlineForPatch = nir != null && nir.isConnected();
+
+                if (!isOnlineForPatch) {
+                    // Offline — save call results for later sync
+                    Log.w(TAG, "Offline — queuing call results for later sync");
+                    Prefs.setPendingCallResultsData(ctx, eventId, resultsUpdate.toString());
+                    Prefs.setCallResultsSyncPending(ctx, true);
+                    SyncWorker.scheduleSyncWhenOnline(ctx);
                 } else {
-                    Log.d(TAG, "Successfully updated call results to Supabase");
+                    SupabaseClient.SupabaseResponse response = SupabaseClient.getInstance(ctx)
+                            .updateEmergencyEventResults(eventId, resultsUpdate);
+                    if (!response.success) {
+                        // Online but PATCH failed — queue for retry
+                        Log.w(TAG, "Call results PATCH failed, queuing: " + response.message);
+                        Prefs.setPendingCallResultsData(ctx, eventId, resultsUpdate.toString());
+                        Prefs.setCallResultsSyncPending(ctx, true);
+                        SyncWorker.scheduleSyncWhenOnline(ctx);
+                    } else {
+                        Log.d(TAG, "Successfully updated call results to Supabase");
+                    }
                 }
 
             } catch (Exception e) {

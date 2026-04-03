@@ -459,23 +459,24 @@ Button XML must use BOTH:
 ## KNOWN ISSUES — CURRENT
 
 1. Admin dashboard: not deployed to Vercel yet
-  Status: works on localhost:3000
+   Status: works on localhost:3000
 
 2. Admin message polling: low priority
-  Status: pollAdminMessagesFromSupabase() exists, uses getSupabaseUserId() correctly
-  Note: Only fires when SafeSphereService is running (protection ON)
+   Only fires when SafeSphereService running (protection ON)
 
-All previous blocking issues have been resolved:
-  - Emergency event insert: FIXED
-  - Time calculations: FIXED
-  - Offline profile sync: FIXED (WorkManager)
-  - Offline feedback sync: FIXED (WorkManager)
-  - Login offline error message: FIXED
-  - Register offline error message: FIXED
-  - GPS prompt when protection enabled: FIXED
-  - LoginActivity appearing after ProfileActivity: FIXED
-    Root cause: setContentView not called before startActivity(ProfileActivity)
-    Fix: initialize views before starting ProfileActivity in onCreate()
+3. SyncWorker_new.java: DELETED — was temporary backup file
+
+All previous issues resolved:
+  - Trigger type fix: FIXED (triggerEmergencyWithSource)
+  - Offline emergency event: FIXED (SyncWorker.syncEmergencyEvent)
+  - Offline call results: FIXED (SyncWorker.syncCallResults)
+  - Offline profile sync: FIXED (SyncWorker.syncProfile)
+  - Offline feedback sync: FIXED (SyncWorker.syncFeedback)
+  - Login offline message: FIXED
+  - Register offline message: FIXED
+  - GPS prompt: FIXED
+  - LoginActivity redirect after ProfileActivity: FIXED
+  - Feedback foreign key retry loop: FIXED
 
 ---
 

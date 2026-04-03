@@ -144,29 +144,29 @@ public class EmergencyManager {
 
         // Run on main thread — SmsManager on Android 12+ requires main thread
         new Handler(Looper.getMainLooper()).post(() -> sendEmergency(ctx.getApplicationContext(), true, "LIVE"));
+    }
 
-        /**
-         * Trigger emergency with the correct source type.
-         * Use this instead of triggerEmergencyLive() when source is known.
-         * @param ctx application context
-         * @param source the trigger source: "SHAKE", "KEYWORD", "MANUAL", or "LIVE"
-         */
-        public static void triggerEmergencyWithSource(Context ctx, String source) {
-            String caller = detectTriggerCaller();
-            Log.d(TAG, "🚨 triggerEmergencyWithSource() source=" + source + " caller=" + caller);
-            Log.i(TAG, FLOW + "_TRIGGER mode=" + source);
-            liveHandler.removeCallbacksAndMessages(null);
-            liveSentCount = 0;
+    /**
+     * Trigger emergency with the correct source type.
+     * Use this instead of triggerEmergencyLive() when source is known.
+     * @param ctx application context
+     * @param source the trigger source: "SHAKE", "KEYWORD", "MANUAL", or "LIVE"
+     */
+    public static void triggerEmergencyWithSource(Context ctx, String source) {
+        String caller = detectTriggerCaller();
+        Log.d(TAG, "🚨 triggerEmergencyWithSource() source=" + source + " caller=" + caller);
+        Log.i(TAG, FLOW + "_TRIGGER mode=" + source);
+        liveHandler.removeCallbacksAndMessages(null);
+        liveSentCount = 0;
 
-            java.util.Map<String, Object> triggerPayload = new java.util.HashMap<>();
-            triggerPayload.put("source", source);
-            triggerPayload.put("caller", caller);
-            String sid = Prefs.ensureSessionId(ctx);
-            AnalyticsQueue.get(ctx).enqueue(EventType.TRIGGER_SOURCE, sid, triggerPayload);
+        java.util.Map<String, Object> triggerPayload = new java.util.HashMap<>();
+        triggerPayload.put("source", source);
+        triggerPayload.put("caller", caller);
+        String sid = Prefs.ensureSessionId(ctx);
+        AnalyticsQueue.get(ctx).enqueue(EventType.TRIGGER_SOURCE, sid, triggerPayload);
 
-            new Handler(Looper.getMainLooper()).post(() ->
-                    sendEmergency(ctx.getApplicationContext(), true, source));
-        }
+        new Handler(Looper.getMainLooper()).post(() ->
+                sendEmergency(ctx.getApplicationContext(), true, source));
     }
 
     public static void triggerEmergencyCurrent(Context ctx) {

@@ -231,10 +231,9 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
 
         if (!isOnline) {
             // Offline — queue for later sync
-            Prefs.setFeedbackSyncPending(this, true);
-            SyncWorker.scheduleSyncWhenOnline(this);
-            Prefs.setPendingFeedbackData(this, eventId, userId,
+            Prefs.enqueueFeedback(this, eventId, userId,
                     wasRealEmergency, wasRescued, rating, feedbackText);
+            SyncWorker.scheduleSyncWhenOnline(this);
             Toast.makeText(this,
                     "Offline — feedback saved and will submit automatically when connected.",
                     Toast.LENGTH_LONG).show();
@@ -254,7 +253,6 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     if (response.success) {
                         // Clear any pending flag since we just submitted successfully
-                        Prefs.clearPendingFeedbackData(EmergencyFeedbackActivity.this);
                         Toast.makeText(EmergencyFeedbackActivity.this,
                                 "Thank you for your feedback!", Toast.LENGTH_SHORT).show();
                         Log.d(TAG, "Feedback submitted successfully: " + response.message);
@@ -264,10 +262,9 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
                         finish();
                     } else {
                         // Supabase error — queue for retry
-                        Prefs.setFeedbackSyncPending(EmergencyFeedbackActivity.this, true);
+                        Prefs.enqueueFeedback(EmergencyFeedbackActivity.this, eventId, userId,
+                                wasRealEmergency, wasRescued, rating, feedbackText);
                         SyncWorker.scheduleSyncWhenOnline(EmergencyFeedbackActivity.this);
-                        Prefs.setPendingFeedbackData(EmergencyFeedbackActivity.this,
-                                eventId, userId, wasRealEmergency, wasRescued, rating, feedbackText);
                         Toast.makeText(EmergencyFeedbackActivity.this,
                                 "Saved locally. Will submit when connected.",
                                 Toast.LENGTH_SHORT).show();
@@ -281,10 +278,9 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
             } catch (Exception e) {
                 Log.e(TAG, "Error submitting feedback", e);
                 // Exception — queue for retry
-                Prefs.setFeedbackSyncPending(EmergencyFeedbackActivity.this, true);
+                Prefs.enqueueFeedback(EmergencyFeedbackActivity.this, eventId, userId,
+                        wasRealEmergency, wasRescued, rating, feedbackText);
                 SyncWorker.scheduleSyncWhenOnline(EmergencyFeedbackActivity.this);
-                Prefs.setPendingFeedbackData(EmergencyFeedbackActivity.this,
-                        eventId, userId, wasRealEmergency, wasRescued, rating, feedbackText);
                 runOnUiThread(() -> {
                     Toast.makeText(EmergencyFeedbackActivity.this,
                             "Saved locally. Will submit when connected.",

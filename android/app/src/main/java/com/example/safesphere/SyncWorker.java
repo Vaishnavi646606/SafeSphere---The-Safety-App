@@ -9,6 +9,7 @@ import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
+import com.example.safesphere.network.SupabaseClient;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -29,8 +30,12 @@ public class SyncWorker extends Worker {
                 .setConstraints(constraints)
                 .addTag(WORK_TAG)
                 .build();
-        WorkManager.getInstance(ctx).enqueue(request);
-        Log.d(TAG, "Sync job scheduled — will run when internet available");
+        WorkManager.getInstance(ctx)
+                .enqueueUniqueWork(
+                        "safesphere_offline_sync",
+                        androidx.work.ExistingWorkPolicy.REPLACE,
+                        request);
+        Log.d(TAG, "Sync job scheduled - will run when internet available");
     }
 
     @NonNull
@@ -39,30 +44,22 @@ public class SyncWorker extends Worker {
         Context ctx = getApplicationContext();
         boolean anyFailed = false;
 
-        // ORDER MATTERS — event must exist before call results and feedback
-
-        // Step 1 — sync pending emergency event queue
         if (!Prefs.isEmergencyEventQueueEmpty(ctx)) {
             boolean ok = syncEmergencyEventQueue(ctx);
             if (!ok) anyFailed = true;
         }
 
-        // Step 2 — sync pending call results queue
-        // Only attempt if emergency event queue is now empty
         if (Prefs.isEmergencyEventQueueEmpty(ctx)
                 && !Prefs.isCallResultsQueueEmpty(ctx)) {
             boolean ok = syncCallResultsQueue(ctx);
             if (!ok) anyFailed = true;
         }
 
-        // Step 3 — sync pending profile update (single — latest wins)
         if (Prefs.isProfileSyncPending(ctx)) {
             boolean ok = syncProfile(ctx);
             if (!ok) anyFailed = true;
         }
 
-        // Step 4 — sync pending feedback queue
-        // Only attempt if emergency event queue is now empty
         if (Prefs.isEmergencyEventQueueEmpty(ctx)
                 && !Prefs.isFeedbackQueueEmpty(ctx)) {
             boolean ok = syncFeedbackQueue(ctx);
@@ -72,24 +69,19 @@ public class SyncWorker extends Worker {
         return anyFailed ? Result.retry() : Result.success();
     }
 
-    // ── Sync emergency event queue ────────────────────────────────
     private boolean syncEmergencyEventQueue(Context ctx) {
         boolean allSucceeded = true;
         try {
             JSONArray queue = Prefs.getEmergencyEventQueue(ctx);
-            Log.d(TAG, "Syncing emergency event queue — " + queue.length() + " item(s)");
-
+            Log.d(TAG, "Syncing emergency event queue - " + queue.length() + " item(s)");
             for (int i = 0; i < queue.length(); i++) {
                 JSONObject item = queue.getJSONObject(i);
                 String eventId = item.optString("event_id", null);
-                String userId  = item.optString("user_id", null);
-
+                String userId = item.optString("user_id", null);
                 if (eventId == null || userId == null) {
-                    // Bad data — remove and skip
                     Prefs.removeEmergencyEventFromQueue(ctx, eventId);
                     continue;
                 }
-
                 try {
                     JSONObject eventData = new JSONObject();
                     eventData.put("id", eventId);
@@ -104,19 +96,15 @@ public class SyncWorker extends Worker {
                             item.optBoolean("has_location_enabled", false));
                     eventData.put("phone_battery_percent",
                             item.optInt("battery_percent", 0));
-
                     double lat = item.optDouble("location_lat", Double.NaN);
                     double lng = item.optDouble("location_lng", Double.NaN);
                     if (!Double.isNaN(lat) && !Double.isNaN(lng)) {
                         eventData.put("location_lat", lat);
                         eventData.put("location_lng", lng);
                     }
-
                     SupabaseClient client = SupabaseClient.getInstance(ctx);
                     SupabaseClient.SupabaseResponse response =
-                            client.insertRowReturningRepresentation(
-                                    "emergency_events", eventData);
-
+                            client.insertRowReturningRepresentation("emergency_events", eventData);
                     if (response.success) {
                         Prefs.removeEmergencyEventFromQueue(ctx, eventId);
                         Log.d(TAG, "Emergency event synced: " + eventId);
@@ -137,29 +125,24 @@ public class SyncWorker extends Worker {
         return allSucceeded;
     }
 
-    // ── Sync call results queue ───────────────────────────────────
     private boolean syncCallResultsQueue(Context ctx) {
         boolean allSucceeded = true;
         try {
             JSONArray queue = Prefs.getCallResultsQueue(ctx);
-            Log.d(TAG, "Syncing call results queue — " + queue.length() + " item(s)");
-
+            Log.d(TAG, "Syncing call results queue - " + queue.length() + " item(s)");
             for (int i = 0; i < queue.length(); i++) {
                 JSONObject item = queue.getJSONObject(i);
-                String eventId     = item.optString("event_id", null);
+                String eventId = item.optString("event_id", null);
                 String resultsJson = item.optString("results_json", null);
-
                 if (eventId == null || resultsJson == null) {
                     Prefs.removeCallResultsFromQueue(ctx, eventId);
                     continue;
                 }
-
                 try {
                     JSONObject resultsUpdate = new JSONObject(resultsJson);
                     SupabaseClient client = SupabaseClient.getInstance(ctx);
                     SupabaseClient.SupabaseResponse response =
                             client.updateEmergencyEventResults(eventId, resultsUpdate);
-
                     if (response.success) {
                         Prefs.removeCallResultsFromQueue(ctx, eventId);
                         Log.d(TAG, "Call results synced for event: " + eventId);
@@ -179,21 +162,18 @@ public class SyncWorker extends Worker {
         return allSucceeded;
     }
 
-    // ── Sync profile (single — latest wins) ──────────────────────
     private boolean syncProfile(Context ctx) {
         try {
-            String userId  = Prefs.getSupabaseUserId(ctx);
-            String name    = Prefs.getPendingProfileName(ctx);
+            String userId = Prefs.getSupabaseUserId(ctx);
+            String name = Prefs.getPendingProfileName(ctx);
             String keyword = Prefs.getPendingProfileKeyword(ctx);
-            String e1      = Prefs.getPendingProfileE1(ctx);
-            String e2      = Prefs.getPendingProfileE2(ctx);
-            String e3      = Prefs.getPendingProfileE3(ctx);
-
+            String e1 = Prefs.getPendingProfileE1(ctx);
+            String e2 = Prefs.getPendingProfileE2(ctx);
+            String e3 = Prefs.getPendingProfileE3(ctx);
             if (userId == null || name == null) {
                 Prefs.clearPendingProfileData(ctx);
                 return true;
             }
-
             JSONObject profileData = new JSONObject();
             profileData.put("display_name", name);
             profileData.put("keyword", keyword);
@@ -202,11 +182,9 @@ public class SyncWorker extends Worker {
             profileData.put("emergency_contact_3", e3 != null ? e3 : "");
             profileData.put("updated_at",
                     SupabaseClient.toIso8601(System.currentTimeMillis()));
-
             SupabaseClient client = SupabaseClient.getInstance(ctx);
             SupabaseClient.SupabaseResponse response =
                     client.updateRow("users", "id", userId, profileData);
-
             if (response.success) {
                 Prefs.clearPendingProfileData(ctx);
                 Log.d(TAG, "Profile synced successfully");
@@ -221,41 +199,39 @@ public class SyncWorker extends Worker {
         }
     }
 
-    // ── Sync feedback queue ───────────────────────────────────────
     private boolean syncFeedbackQueue(Context ctx) {
         boolean allSucceeded = true;
         try {
             JSONArray queue = Prefs.getFeedbackQueue(ctx);
-            Log.d(TAG, "Syncing feedback queue — " + queue.length() + " item(s)");
-
+            Log.d(TAG, "Syncing feedback queue - " + queue.length() + " item(s)");
             for (int i = 0; i < queue.length(); i++) {
                 JSONObject item = queue.getJSONObject(i);
                 String eventId = item.optString("event_id", null);
-                String userId  = item.optString("user_id", null);
-                int rating     = item.optInt("rating", 0);
-
+                String userId = item.optString("user_id", null);
+                int rating = item.optInt("rating", 0);
                 if (eventId == null || userId == null || rating == 0) {
                     Prefs.removeFeedbackFromQueue(ctx, eventId);
                     continue;
                 }
-
                 try {
                     SupabaseClient.EmergencyFeedbackData feedbackData =
                             new SupabaseClient.EmergencyFeedbackData();
-                    feedbackData.eventId            = eventId;
-                    feedbackData.userId             = userId;
-                    feedbackData.wasRealEmergency   = item.optBoolean("was_real_emergency", false);
+                    feedbackData.eventId = eventId;
+                    feedbackData.userId = userId;
+                    feedbackData.wasRealEmergency = item.optBoolean("was_real_emergency", false);
                     feedbackData.wasRescuedOrHelped = item.optBoolean("was_rescued", false);
-                    feedbackData.rating             = rating;
-                    feedbackData.feedbackText       = item.optString("feedback_text", "");
-
+                    feedbackData.rating = rating;
+                    feedbackData.feedbackText = item.optString("feedback_text", "");
                     SupabaseClient client = SupabaseClient.getInstance(ctx);
                     SupabaseClient.SupabaseResponse response =
                             client.submitEmergencyFeedback(feedbackData);
-
                     if (response.success) {
                         Prefs.removeFeedbackFromQueue(ctx, eventId);
                         Log.d(TAG, "Feedback synced for event: " + eventId);
+                    } else if (response.message != null
+                            && response.message.contains("23503")) {
+                        Prefs.removeFeedbackFromQueue(ctx, eventId);
+                        Log.w(TAG, "Feedback FK violation - removed: " + eventId);
                     } else {
                         Log.w(TAG, "Feedback sync failed: " + response.message);
                         allSucceeded = false;
@@ -270,47 +246,5 @@ public class SyncWorker extends Worker {
             allSucceeded = false;
         }
         return allSucceeded;
-    }
-            // Retrying will never succeed — clear the pending feedback
-            if (response.message != null && response.message.contains("23503")) {
-                Log.w(TAG, "Feedback eventId not found in emergency_events — "
-                        + "clearing pending feedback, cannot retry: " + eventId);
-                Prefs.clearPendingFeedbackData(ctx);
-                return true; // return true so WorkManager does not retry
-            }
-
-            // Any other error — keep pending and retry later
-            Log.w(TAG, "Feedback sync failed, will retry: " + response.message);
-            return false;
-
-        } catch (Exception e) {
-            Log.w(TAG, "Feedback sync exception", e);
-            return false;
-        }
-    }
-
-    /**
-     * Call this from ProfileActivity,  EmergencyFeedbackActivity, or EmergencyManager
-     * after saving data to Prefs offline.
-     * WorkManager will run this automatically when internet returns,
-     * even if the app is completely killed.
-     */
-    public static void scheduleSyncWhenOnline(Context ctx) {
-        Constraints constraints = new Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build();
-
-        OneTimeWorkRequest syncRequest = new OneTimeWorkRequest.Builder(SyncWorker.class)
-                .setConstraints(constraints)
-                .addTag("offline_sync")
-                .build();
-
-        WorkManager.getInstance(ctx)
-                .enqueueUniqueWork(
-                        "safesphere_offline_sync",
-                        androidx.work.ExistingWorkPolicy.REPLACE,
-                        syncRequest);
-
-        Log.d(TAG, "Sync job scheduled — will run when internet available");
     }
 }

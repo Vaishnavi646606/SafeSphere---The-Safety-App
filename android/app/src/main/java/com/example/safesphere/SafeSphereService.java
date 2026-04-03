@@ -393,7 +393,6 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
         mainHandler.postDelayed(adminMessagePollRunnable, 10_000L);
         pollAdminMessagesFromSupabase();
         syncPendingProfileIfNeeded();
-        syncPendingFeedbackIfNeeded();
     }
 
     private void stopAdminMessagePolling() {
@@ -485,50 +484,6 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
                 Log.w(TAG, "syncPendingProfileIfNeeded: exception during sync", e);
             }
         }, "profile-sync").start();
-    }
-
-    private void syncPendingFeedbackIfNeeded() {
-        final Context ctx = getApplicationContext();
-        if (!Prefs.isFeedbackSyncPending(ctx)) return;
-
-        new Thread(() -> {
-            try {
-                // Check connectivity
-                android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
-                        ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
-                android.net.NetworkInfo ni = cm.getActiveNetworkInfo();
-                if (ni == null || !ni.isConnected()) return;
-
-                String eventId      = Prefs.getPendingFeedbackEventId(ctx);
-                String feedbackUserId = Prefs.getPendingFeedbackUserId(ctx);
-                int rating          = Prefs.getPendingFeedbackRating(ctx);
-
-                if (eventId == null || feedbackUserId == null || rating == 0) return;
-
-                SupabaseClient.EmergencyFeedbackData feedbackData =
-                        new SupabaseClient.EmergencyFeedbackData();
-                feedbackData.eventId          = eventId;
-                feedbackData.userId           = feedbackUserId;
-                feedbackData.wasRealEmergency = Prefs.getPendingFeedbackWasReal(ctx);
-                feedbackData.wasRescuedOrHelped = Prefs.getPendingFeedbackWasRescued(ctx);
-                feedbackData.rating           = rating;
-                feedbackData.feedbackText     = Prefs.getPendingFeedbackText(ctx);
-
-                SupabaseClient client = SupabaseClient.getInstance(ctx);
-                SupabaseClient.SupabaseResponse response =
-                        client.submitEmergencyFeedback(feedbackData);
-
-                if (response.success) {
-                    Prefs.clearPendingFeedbackData(ctx);
-                    Log.d(TAG, "syncPendingFeedbackIfNeeded: feedback synced successfully");
-                } else {
-                    Log.w(TAG, "syncPendingFeedbackIfNeeded: sync failed, will retry - "
-                            + response.message);
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "syncPendingFeedbackIfNeeded: exception during sync", e);
-            }
-        }, "feedback-sync").start();
     }
 
     private void postAdminMessageNotification(SupabaseClient.AdminMessageData msg, String pendingId) {

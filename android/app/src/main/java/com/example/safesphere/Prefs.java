@@ -64,6 +64,10 @@ public class Prefs {
         return ctx.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
     }
 
+    private static SharedPreferences getPrefs(Context ctx) {
+        return getAll(ctx);
+    }
+
     public static String getKeyword(Context ctx) {
 
         return getAll(ctx).getString("keyword", "");
@@ -355,6 +359,114 @@ public class Prefs {
 
     public static void setNeedsProfileSetup(Context ctx, boolean needed) {
         getAll(ctx).edit().putBoolean("needs_profile_setup", needed).apply();
+    }
+
+    // ── Offline profile sync queue ──────────────────────────
+    public static void setProfileSyncPending(Context ctx, boolean pending) {
+        getPrefs(ctx).edit().putBoolean("profile_sync_pending", pending).apply();
+    }
+
+    public static boolean isProfileSyncPending(Context ctx) {
+        return getPrefs(ctx).getBoolean("profile_sync_pending", false);
+    }
+
+    public static void setPendingProfileData(Context ctx, String name, String keyword,
+            String e1, String e2, String e3) {
+        getPrefs(ctx).edit()
+                .putString("pending_profile_name", name)
+                .putString("pending_profile_keyword", keyword)
+                .putString("pending_profile_e1", e1)
+                .putString("pending_profile_e2", e2)
+                .putString("pending_profile_e3", e3)
+                .apply();
+    }
+
+    public static String getPendingProfileName(Context ctx) {
+        return getPrefs(ctx).getString("pending_profile_name", null);
+    }
+
+    public static String getPendingProfileKeyword(Context ctx) {
+        return getPrefs(ctx).getString("pending_profile_keyword", null);
+    }
+
+    public static String getPendingProfileE1(Context ctx) {
+        return getPrefs(ctx).getString("pending_profile_e1", null);
+    }
+
+    public static String getPendingProfileE2(Context ctx) {
+        return getPrefs(ctx).getString("pending_profile_e2", null);
+    }
+
+    public static String getPendingProfileE3(Context ctx) {
+        return getPrefs(ctx).getString("pending_profile_e3", null);
+    }
+
+    public static void clearPendingProfileData(Context ctx) {
+        getPrefs(ctx).edit()
+                .remove("profile_sync_pending")
+                .remove("pending_profile_name")
+                .remove("pending_profile_keyword")
+                .remove("pending_profile_e1")
+                .remove("pending_profile_e2")
+                .remove("pending_profile_e3")
+                .apply();
+    }
+
+    // ── Offline feedback sync queue ──────────────────────────
+    public static void setFeedbackSyncPending(Context ctx, boolean pending) {
+        getPrefs(ctx).edit().putBoolean("feedback_sync_pending", pending).apply();
+    }
+
+    public static boolean isFeedbackSyncPending(Context ctx) {
+        return getPrefs(ctx).getBoolean("feedback_sync_pending", false);
+    }
+
+    public static void setPendingFeedbackData(Context ctx, String eventId, String userId,
+            boolean wasRealEmergency, boolean wasRescued, int rating, String feedbackText) {
+        getPrefs(ctx).edit()
+                .putString("pending_feedback_event_id", eventId)
+                .putString("pending_feedback_user_id", userId)
+                .putBoolean("pending_feedback_real_emergency", wasRealEmergency)
+                .putBoolean("pending_feedback_rescued", wasRescued)
+                .putInt("pending_feedback_rating", rating)
+                .putString("pending_feedback_text", feedbackText)
+                .apply();
+    }
+
+    public static String getPendingFeedbackEventId(Context ctx) {
+        return getPrefs(ctx).getString("pending_feedback_event_id", null);
+    }
+
+    public static String getPendingFeedbackUserId(Context ctx) {
+        return getPrefs(ctx).getString("pending_feedback_user_id", null);
+    }
+
+    public static boolean getPendingFeedbackWasReal(Context ctx) {
+        return getPrefs(ctx).getBoolean("pending_feedback_real_emergency", false);
+    }
+
+    public static boolean getPendingFeedbackWasRescued(Context ctx) {
+        return getPrefs(ctx).getBoolean("pending_feedback_rescued", false);
+    }
+
+    public static int getPendingFeedbackRating(Context ctx) {
+        return getPrefs(ctx).getInt("pending_feedback_rating", 0);
+    }
+
+    public static String getPendingFeedbackText(Context ctx) {
+        return getPrefs(ctx).getString("pending_feedback_text", null);
+    }
+
+    public static void clearPendingFeedbackData(Context ctx) {
+        getPrefs(ctx).edit()
+                .remove("feedback_sync_pending")
+                .remove("pending_feedback_event_id")
+                .remove("pending_feedback_user_id")
+                .remove("pending_feedback_real_emergency")
+                .remove("pending_feedback_rescued")
+                .remove("pending_feedback_rating")
+                .remove("pending_feedback_text")
+                .apply();
     }
 
 }

@@ -100,9 +100,28 @@ public class MainActivity extends AppCompatActivity {
         // Check if profile setup is needed
         if (Prefs.needsProfileSetup(this)) {
             Prefs.setNeedsProfileSetup(this, false);
+
+            // Must call setContentView BEFORE starting ProfileActivity
+            // so that views (switchProtection, cardProtection, etc.) are
+            // initialized and onResume() does not crash on null references
+            setContentView(R.layout.activity_main);
+
+            cardProtection         = findViewById(R.id.cardProtection);
+            tvProtectionStatus     = findViewById(R.id.tvProtectionStatus);
+            switchProtection       = findViewById(R.id.switchProtection);
+            locationLoadingOverlay = findViewById(R.id.locationLoadingOverlay);
+            tvLocationLoading      = findViewById(R.id.tvLocationLoading);
+
+            boolean protActive = Prefs.isProtectionEnabled(this);
+            suppressSwitchListener = true;
+            switchProtection.setChecked(protActive);
+            suppressSwitchListener = false;
+            updateProtectionUI(protActive);
+
             Toast.makeText(this,
                 "Please complete your profile — add keyword and emergency contacts.",
                 Toast.LENGTH_LONG).show();
+
             Intent profileIntent = new Intent(this, ProfileActivity.class);
             profileIntent.putExtra("setup_required", true);
             startActivity(profileIntent);
@@ -136,6 +155,8 @@ public class MainActivity extends AppCompatActivity {
                             Toast.LENGTH_LONG).show();
                 }
                 requestBatteryOptimizationExemption();
+                // Check GPS when protection is turned on
+                checkGpsAndPromptIfNeeded();
                 startSafeSphereService();
                 Toast.makeText(this,
                         "Protection ON — App will monitor in background indefinitely.",
@@ -708,6 +729,31 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception ignored) {
             // Vivo and some OEMs block this intent — silently ignore
         }
+    }
+
+    private void checkGpsAndPromptIfNeeded() {
+        if (isLocationServiceEnabled()) return;
+
+        new AlertDialog.Builder(this)
+                .setTitle("Location is OFF")
+                .setMessage(
+                        "SafeSphere can share your live location with emergency contacts " +
+                        "when you need help. Location sharing will not work until GPS is enabled.\n\n" +
+                        "Would you like to turn on Location now?")
+                .setPositiveButton("Turn On Location", (dialog, which) -> {
+                    try {
+                        startActivity(new Intent(
+                                android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+                    } catch (Exception ignored) {}
+                })
+                .setNegativeButton("Not Now", (dialog, which) -> {
+                    dialog.dismiss();
+                    Toast.makeText(this,
+                            "Location sharing will not work without GPS. You can enable it anytime in Settings.",
+                            Toast.LENGTH_LONG).show();
+                })
+                .setCancelable(true)
+                .show();
     }
 
     /**

@@ -125,12 +125,30 @@ public class LoginActivity extends AppCompatActivity {
         new Thread(() -> {
             try {
                 SupabaseClient client = SupabaseClient.getInstance(getApplicationContext());
+                // Check connectivity before Supabase call
+                android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                        getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+                android.net.NetworkInfo ni = cm.getActiveNetworkInfo();
+                boolean isOnline = ni != null && ni.isConnected();
+
+                if (!isOnline) {
+                    runOnUiThread(() -> {
+                        setLoading(false);
+                        Toast.makeText(LoginActivity.this,
+                                "No internet connection. Please check your connection and try again.",
+                                Toast.LENGTH_LONG).show();
+                    });
+                    return;
+                }
+
                 JSONObject user = client.getUserProfileByPhone(phone);
 
                 if (user == null) {
                     runOnUiThread(() -> {
                         setLoading(false);
-                        Toast.makeText(LoginActivity.this, "No account found. Please register first.", Toast.LENGTH_LONG).show();
+                        Toast.makeText(LoginActivity.this,
+                                "No account found with this number. Please register first.",
+                                Toast.LENGTH_LONG).show();
                     });
                     return;
                 }

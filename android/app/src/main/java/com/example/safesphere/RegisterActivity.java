@@ -57,6 +57,22 @@ public class RegisterActivity extends AppCompatActivity {
 
         new Thread(() -> {
             try {
+                // Check connectivity before any Supabase call
+                android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                        getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+                android.net.NetworkInfo ni = cm.getActiveNetworkInfo();
+                boolean isOnline = ni != null && ni.isConnected();
+
+                if (!isOnline) {
+                    runOnUiThread(() -> {
+                        setLoading(false);
+                        Toast.makeText(RegisterActivity.this,
+                                "No internet connection. Registration requires internet. Please connect and try again.",
+                                Toast.LENGTH_LONG).show();
+                    });
+                    return;
+                }
+
                 SupabaseClient client = SupabaseClient.getInstance(getApplicationContext());
                 JSONObject existingUser = client.getUserByPhone(phone);
 

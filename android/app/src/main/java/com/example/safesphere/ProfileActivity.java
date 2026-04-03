@@ -83,41 +83,90 @@ public class ProfileActivity extends AppCompatActivity {
             try {
                 String userId = Prefs.getSupabaseUserId(this);
                 if (userId == null || userId.isEmpty()) {
+                    // No user ID — save pending flag and bail
+                    Prefs.setProfileSyncPending(this, true);
+                    SyncWorker.scheduleSyncWhenOnline(this);
+                    Prefs.setPendingProfileData(this, name, keyword, e1, e2, e3);
                     runOnUiThread(() -> {
                         setLoading(false);
-                        Toast.makeText(this, "Error: No user ID found", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this,
+                                "Saved locally. Will sync when connected.",
+                                Toast.LENGTH_SHORT).show();
+                        if (setupRequired) finish();
                     });
                     return;
                 }
 
-                JSONObject patch = new JSONObject();
+                // Check network before attempting Supabase call
+                android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                        getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+                android.net.NetworkInfo ni = cm.getActiveNetworkInfo();
+                boolean isOnline = ni != null && ni.isConnected();
+
+                if (!isOnline) {
+                    // Offline — queue for later sync
+                    Prefs.setProfileSyncPending(this, true);
+                    SyncWorker.scheduleSyncWhenOnline(this);
+                    Prefs.setPendingProfileData(this, name, keyword, e1, e2, e3);
+                    runOnUiThread(() -> {
+                        setLoading(false);
+                        Toast.makeText(this,
+                                "Offline — changes saved locally and will sync automatically when connected.",
+                                Toast.LENGTH_LONG).show();
+                        if (setupRequired) finish();
+                    });
+                    return;
+                }
+
+                // Online — push to Supabase
+                org.json.JSONObject patch = new org.json.JSONObject();
                 patch.put("display_name", name);
                 patch.put("keyword", keyword.toLowerCase().trim());
                 patch.put("emergency_contact_1", e1);
                 patch.put("emergency_contact_2", e2);
                 patch.put("emergency_contact_3", e3);
-                patch.put("updated_at", SupabaseClient.toIso8601(System.currentTimeMillis()));
+                patch.put("updated_at",
+                        com.example.safesphere.network.SupabaseClient.toIso8601(
+                                System.currentTimeMillis()));
 
-                SupabaseClient client = SupabaseClient.getInstance(this);
-                SupabaseClient.SupabaseResponse response = client.updateRow("users", "id", userId, patch);
+                com.example.safesphere.network.SupabaseClient client =
+                        com.example.safesphere.network.SupabaseClient.getInstance(this);
+                com.example.safesphere.network.SupabaseClient.SupabaseResponse response =
+                        client.updateRow("users", "id", userId, patch);
 
-                runOnUiThread(() -> {
-                    setLoading(false);
-                    if (response.success) {
+                if (response.success) {
+                    // Sync succeeded — clear any pending flag
+                    Prefs.clearPendingProfileData(this);
+                    runOnUiThread(() -> {
+                        setLoading(false);
                         Toast.makeText(this, "Profile saved", Toast.LENGTH_SHORT).show();
-                        // Step 4: If setup_required, finish and return to MainActivity
-                        if (setupRequired) {
-                            finish();
-                        }
-                    } else {
-                        Toast.makeText(this, "Saved locally. Will sync when connected.", Toast.LENGTH_SHORT).show();
-                    }
-                });
+                        if (setupRequired) finish();
+                    });
+                } else {
+                    // Supabase returned error — queue for retry
+                    Prefs.setProfileSyncPending(this, true);
+                    SyncWorker.scheduleSyncWhenOnline(this);
+                    Prefs.setPendingProfileData(this, name, keyword, e1, e2, e3);
+                    runOnUiThread(() -> {
+                        setLoading(false);
+                        Toast.makeText(this,
+                                "Saved locally. Will sync when connected.",
+                                Toast.LENGTH_SHORT).show();
+                        if (setupRequired) finish();
+                    });
+                }
             } catch (Exception e) {
                 android.util.Log.e("ProfileActivity", "Save profile error", e);
+                // On any exception — queue for retry
+                Prefs.setProfileSyncPending(this, true);
+                SyncWorker.scheduleSyncWhenOnline(this);
+                Prefs.setPendingProfileData(this, name, keyword, e1, e2, e3);
                 runOnUiThread(() -> {
                     setLoading(false);
-                    Toast.makeText(this, "Saved locally. Will sync when connected.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this,
+                            "Saved locally. Will sync when connected.",
+                            Toast.LENGTH_SHORT).show();
+                    if (setupRequired) finish();
                 });
             }
         }).start();

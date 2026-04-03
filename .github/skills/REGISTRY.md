@@ -41,6 +41,7 @@ This registry tracks all available skills and agents for SafeSphere development.
 |------------|------|-------------|--------------|
 | Emergency Call System | `.github/skills/emergency-call-system/skill.md` | Emergency call sequence, phone state detection, battery optimization, testing | 2026-03-30 |
 | Session Persistence & Auth | `.github/skills/session-persistence/skill.md` | SharedPreferences, login flow, session recovery, revocation handling | 2026-03-30 |
+| Offline Sync Worker | `.github/skills/offline-sync/skill.md` | WorkManager-based sync for profile and feedback when offline | 2026-04-03 |
 
 ## General Development Skills
 
@@ -103,7 +104,7 @@ If a skill references something that no longer exists, it should be updated or a
 
 **Last Registry Update:** 2026-03-30  
 **Registry Status:** ✅ Complete - All project-specific skills generated
-**Total Skills:** 11 (3 core + 8 project-specific)
+**Total Skills:** 12 (3 core + 9 project-specific)
 
 ### Skills Coverage
 ✅ Android Activities, Services, Broadcast Receivers

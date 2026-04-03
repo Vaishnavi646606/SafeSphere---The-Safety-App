@@ -223,14 +223,38 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
         feedbackData.rating = rating;
         feedbackData.feedbackText = feedbackText;
         
-        // Submit on background thread
+        // Check network before attempting submission
+        android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+        android.net.NetworkInfo ni = cm.getActiveNetworkInfo();
+        boolean isOnline = ni != null && ni.isConnected();
+
+        if (!isOnline) {
+            // Offline — queue for later sync
+            Prefs.setFeedbackSyncPending(this, true);
+            SyncWorker.scheduleSyncWhenOnline(this);
+            Prefs.setPendingFeedbackData(this, eventId, userId,
+                    wasRealEmergency, wasRescued, rating, feedbackText);
+            Toast.makeText(this,
+                    "Offline — feedback saved and will submit automatically when connected.",
+                    Toast.LENGTH_LONG).show();
+            Intent intentToMain = new Intent(EmergencyFeedbackActivity.this, MainActivity.class);
+            intentToMain.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intentToMain);
+            finish();
+            return;
+        }
+
+        // Online — submit now
         new Thread(() -> {
             try {
                 SupabaseClient client = SupabaseClient.getInstance();
                 SupabaseClient.SupabaseResponse response = client.submitEmergencyFeedback(feedbackData);
-                
+
                 runOnUiThread(() -> {
                     if (response.success) {
+                        // Clear any pending flag since we just submitted successfully
+                        Prefs.clearPendingFeedbackData(EmergencyFeedbackActivity.this);
                         Toast.makeText(EmergencyFeedbackActivity.this,
                                 "Thank you for your feedback!", Toast.LENGTH_SHORT).show();
                         Log.d(TAG, "Feedback submitted successfully: " + response.message);
@@ -239,16 +263,37 @@ public class EmergencyFeedbackActivity extends AppCompatActivity {
                         startActivity(intentToMain);
                         finish();
                     } else {
+                        // Supabase error — queue for retry
+                        Prefs.setFeedbackSyncPending(EmergencyFeedbackActivity.this, true);
+                        SyncWorker.scheduleSyncWhenOnline(EmergencyFeedbackActivity.this);
+                        Prefs.setPendingFeedbackData(EmergencyFeedbackActivity.this,
+                                eventId, userId, wasRealEmergency, wasRescued, rating, feedbackText);
                         Toast.makeText(EmergencyFeedbackActivity.this,
-                                "Failed to submit feedback: " + response.message,
+                                "Saved locally. Will submit when connected.",
                                 Toast.LENGTH_SHORT).show();
                         Log.e(TAG, "Feedback submission failed: " + response.message);
+                        Intent intentToMain = new Intent(EmergencyFeedbackActivity.this, MainActivity.class);
+                        intentToMain.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                        startActivity(intentToMain);
+                        finish();
                     }
                 });
             } catch (Exception e) {
                 Log.e(TAG, "Error submitting feedback", e);
-                runOnUiThread(() -> Toast.makeText(EmergencyFeedbackActivity.this,
-                        "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                // Exception — queue for retry
+                Prefs.setFeedbackSyncPending(EmergencyFeedbackActivity.this, true);
+                SyncWorker.scheduleSyncWhenOnline(EmergencyFeedbackActivity.this);
+                Prefs.setPendingFeedbackData(EmergencyFeedbackActivity.this,
+                        eventId, userId, wasRealEmergency, wasRescued, rating, feedbackText);
+                runOnUiThread(() -> {
+                    Toast.makeText(EmergencyFeedbackActivity.this,
+                            "Saved locally. Will submit when connected.",
+                            Toast.LENGTH_SHORT).show();
+                    Intent intentToMain = new Intent(EmergencyFeedbackActivity.this, MainActivity.class);
+                    intentToMain.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    startActivity(intentToMain);
+                    finish();
+                });
             }
         }).start();
     }

@@ -1,169 +1,500 @@
-# Project Copilot Instructions (Global Context)
+﻿# Project Copilot Instructions (Global Context)
 
 ## STRICT RULES — NEVER VIOLATE THESE
 
 ### Anti-Hallucination Rules
-1. **NEVER invent files, functions, classes, or packages that don't exist in this codebase.**
-2. **ALWAYS verify** a file exists before referencing it. If unsure, say "I need to check if this exists."
-3. **NEVER assume** a dependency is installed. Check `package.json`, `requirements.txt`, `.csproj`, `pom.xml`, or equivalent first.
-4. **If you don't know something, say "I don't know" instead of guessing.**
-5. **ALWAYS read the actual file content** before suggesting modifications.
-6. **Quote exact line numbers** when referencing existing code.
-7. **NEVER fabricate API endpoints, database schemas, or config values.**
+1. NEVER invent files, functions, classes, columns, or tables that don't exist.
+2. ALWAYS verify a file exists before referencing it.
+3. NEVER assume a dependency is installed. Check package.json or build.gradle first.
+4. If you don't know something, say "I need to verify this" instead of guessing.
+5. ALWAYS read the actual file content before suggesting modifications.
+6. NEVER fabricate API endpoints, database columns, or config values.
+7. When in doubt about a column name — check the VERIFIED SCHEMA section below.
 
 ### Memory & Context Rules
-8. When I give new instructions about skills or agents, **immediately update** the relevant `.md` file in `.github/skills/` or `.github/prompts/`.
-9. **Append a changelog** at the bottom of each skill file when updated.
-10. Before every response, mentally check: "Am I about to say something I haven't verified in the actual codebase?"
+8. When given new instructions about skills or agents, immediately update the relevant
+   .md file in .github/skills/ or .github/prompts/
+9. Append a changelog at the bottom of each skill file when updated.
+10. Before every response, check: "Am I about to reference something I haven't verified?"
 
 ### Code Quality Rules
-11. Follow existing code patterns, naming conventions, and folder structure already in this project.
+11. Follow existing code patterns, naming conventions, and folder structure.
 12. Never remove existing functionality unless explicitly asked.
-13. Always include error handling.
-14. Write comments for complex logic only.
+13. Always include error handling (try-catch in Java, try-catch in TypeScript).
+14. ALL Supabase calls in Android must be in background threads.
+15. NEVER send Unix milliseconds to Supabase — use ISO 8601 format.
+16. Use SupabaseClient.toIso8601(long millis) for timestamp conversion in Android.
 
 ### Self-Review Before Responding
 Before giving ANY code suggestion:
-- [ ] Did I verify the files I'm referencing actually exist?
-- [ ] Did I check the actual imports/dependencies?
-- [ ] Does my suggestion match the existing code patterns?
-- [ ] Am I hallucinating any function names or APIs?
+- Did I verify the files I am referencing actually exist?
+- Did I check actual imports and dependencies?
+- Does my suggestion match existing code patterns?
+- Am I hallucinating any column names, table names, or method names?
 
-## Project Context
-<!-- Auto-detected from SafeSphere codebase scan -->
-### Tech Stack: SafeSphere (Android + Web)
-**Android Tier:**
-- **Language:** Java
-- **Build System:** Gradle
-- **Compile SDK:** 35, Target SDK: 35, Min SDK: 24
-- **Key Libraries:**
-  - androidx.appcompat:appcompat:1.7.0
-  - com.google.android.material:material:1.12.0
-  - com.google.android.gms:play-services-location:21.3.0
-  - com.alphacephei:vosk-android:0.3.47 (offline speech recognition)
-  - androidx.room:room-runtime:2.6.1 (local analytics database)
-  - androidx.work:work-runtime:2.9.0 (background tasks)
-  - com.squareup.okhttp3:okhttp:4.12.0 (HTTP client)
-  - com.google.code.gson:gson:2.10.1 (JSON serialization)
+---
 
-**Web Tier:**
-- **Framework:** Next.js 16.1.7 with React 19.2.3
-- **Language:** TypeScript 5.x
-- **Styling:** Tailwind CSS 4.x
-- **Database SDK:** @supabase/supabase-js:2.99.2, @supabase/ssr:0.9.0
-- **UI Libraries:** Lucide React (0.577.0), Recharts (3.8.0)
+## PROJECT OVERVIEW
 
-**Backend:** Supabase (PostgreSQL) with real-time queries
+SafeSphere is a women's safety app with:
+- Android app (Java) — emergency detection via shake/keyword/manual, call routing, SMS, feedback
+- Admin dashboard (Next.js 15) — analytics, incident management, user management
+- Supabase backend — PostgreSQL database, RLS policies
 
-**Application ID:** com.example.safesphere  
-**Version:** 1.0 (Android), 0.1.0 (Web)
+---
 
-### Architecture Pattern
-- **Android:** Activity-based lifecycle with background Service, Broadcast Receivers, SharedPreferences for persistence
-- **Web:** Next.js App Router with protected routes (middleware-based auth), Supabase for auth & data, TypeScript for type safety
-- **Communication:** Android ↔ Web via HTTPS REST API (OkHttp client to Next.js routes)
-- **Database:** PostgreSQL via Supabase (single source of truth), Room local analytics queue on Android
-- **Message Queue:** Emergency events synced via WorkManager (AnalyticsSyncWorker runs every 15 min)
+## TECH STACK — VERIFIED
 
-### Key Patterns Found
+### Android
+- Language: Java (NOT Kotlin)
+- Min SDK: 26 (Android 8), Target SDK: 35, Compile SDK: 35
+- Application ID: com.example.safesphere
+- Build System: Gradle
 
-**Android Activities:**
-- Launcher: LoginActivity → RegisterActivity → MainActivity (dashboard)
-- Dashboard: MainActivity (protection toggle, settings)
-- Emergency Flow: Fake call interface (FakeCallActivity) + transparent trampoline (CallActivity)
-- Profile editing: ProfileActivity
-- Result: All extend AppCompatActivity, use ViewBinding, follow onCreate→onStart→onResume→onPause→onDestroy lifecycle
+Key Libraries (verified in app/build.gradle):
+- androidx.appcompat:appcompat:1.7.0
+- com.google.android.material:material:1.12.0
+- com.google.android.gms:play-services-location:21.3.0
+- com.alphacephei:vosk-android:0.3.47 (offline speech recognition)
+- androidx.room:room-runtime:2.6.1 (local analytics queue)
+- androidx.work:work-runtime:2.9.0 (background sync)
+- com.squareup.okhttp3:okhttp:4.12.0 (HTTP client)
+- com.google.code.gson:gson:2.10.1 (JSON)
 
-**Android Services & Receivers:**
-- SafeSphereService (core: keyword detection, shake detection, location tracking, call management)
-- BootReceiver (RECEIVE_BOOT_COMPLETED)
-- PhoneStateReceiver (manifest-registered for process death resilience)
-- ServiceRestartReceiver (AlarmManager-triggered restart)
+Secrets (loaded from android/local.properties — GITIGNORED):
+- SUPABASE_URL
+- SUPABASE_ANON_KEY
+- VERCEL_BASE_URL
+- PHONE_HASH_SALT
 
-**Web Pages:**
-- Public: `/` (landing), `/admin/login` (auth form)
-- Admin protected at `/admin/*` via middleware.ts (checks admin_accounts table)
-- Dashboard: `/admin/dashboard` (metrics, charts)
-- Management: `/admin/users`, `/admin/users/[id]`, `/admin/incidents`, `/admin/messages`
-- Audit: `/admin/audit`, `/admin/analytics`, `/admin/saved`
+### Admin Dashboard
+- Framework: Next.js 15 with Turbopack
+- Language: TypeScript
+- Styling: Tailwind CSS (dark theme)
+- Database: @supabase/supabase-js, @supabase/ssr
+- Charts: Recharts
+- Icons: Lucide React
+- Dev server: localhost:3000
 
-**Web API Routes:**
-- Public: `/api/user/register` (POST), `/api/revocation/check` (GET), `/api/analytics/ingest` (POST)
-- Admin: `/api/admin/dashboard/metrics` (GET), `/api/admin/incidents` (GET/POST), `/api/admin/analytics` (GET), `/api/admin/audit` (GET), `/api/admin/remove-user` (POST), `/api/admin/send-message` (POST), `/api/admin/saved` (GET)
+---
 
-**Critical Paths:**
+## FILE STRUCTURE — VERIFIED
 
-1. **Emergency Call Sequence** (app/src/main/java/com/example/safesphere/EmergencyManager.java)
-   - 3-contact fallback with polling every 2s
-   - Call state detection via manifest-registered PhoneStateReceiver
-   - SMS fallback if no answer
-   - Location sharing per contact
-   - Battery optimization via knapsack algorithm (EmergencyActionOptimizer.java)
+### Android Files (all verified to exist)
+android/app/src/main/java/com/example/safesphere/
+  MainActivity.java          — main UI, protection toggle, permissions
+  LoginActivity.java         — login with Supabase verification
+  RegisterActivity.java      — new user registration
+  ProfileActivity.java       — profile editing, keyword, emergency contacts
+  EmergencyFeedbackActivity.java — feedback form after emergency
+  EmergencyManager.java      — CORE emergency logic (1700+ lines)
+  SafeSphereService.java     — background service, keyword/shake detection
+  PhoneStateReceiver.java    — call state listener, sequence complete handler
+  BootReceiver.java          — restart service on device boot
+  ServiceRestartReceiver.java — AlarmManager-triggered service restart
+  ShakeDetector.java         — accelerometer shake detection
+  EmergencyDecisionAPI.java  — trigger scoring (keyword+5, shake+3, location+2)
+  EmergencyActionOptimizer.java — battery-aware action selection (knapsack)
+  FakeCallActivity.java      — fake incoming call UI
+  CallActivity.java          — transparent trampoline for emergency calls
+  Prefs.java                 — SharedPreferences helper (ALL app state)
+  network/SupabaseClient.java — database API calls
+  network/NetworkConfig.java  — HTTP timeouts
+  AnalyticsQueue.java        — event queue for WorkManager
+  SyncWorker.java            — WorkManager worker for offline profile/feedback sync
 
-2. **Keyword Detection** (SafeSphereService.java)
-   - Vosk offline speech recognition (sample rate 16000 Hz)
-   - Real-time background thread processing
-   - Trigger threshold: 5+ points (keyword +5, shake +3, location +2)
+### Admin Dashboard Files (all verified to exist)
+admin/src/app/admin/
+  dashboard/page.tsx
+  incidents/page.tsx
+  users/page.tsx
+  users/[id]/page.tsx
+  analytics/page.tsx
+  feedback/page.tsx
+  saved/page.tsx
+  audit/page.tsx
 
-3. **Session Persistence** (Prefs.java - SharedPreferences)
-   - Keys: name, phone, keyword, e1/e2/e3 contacts, logged_in, call_sequence_index, protection_enabled
-   - Used by: EmergencyManager (call_sequence_index), MainActivity (logged_in, protection_enabled)
-   - Survives app crashes & force stop
+admin/src/app/api/
+  admin/analytics/route.ts
+  admin/audit/route.ts
+  admin/feedback/route.ts
+  admin/incidents/route.ts
+  admin/incidents/[id]/route.ts
+  admin/metrics/route.ts
+  admin/remove-user/route.ts
+  admin/saved/route.ts
+  admin/send-message/route.ts
+  admin/users/route.ts
+  admin/users/[id]/route.ts
+  admin/users/[id]/incidents/route.ts
+  admin/verify-rescue/route.ts
+  analytics/ingest/route.ts
+  emergency/event/route.ts
+  emergency/feedback/route.ts
+  revocation/check/route.ts
+  user/register/route.ts
 
-4. **Phone State Listener** (PhoneStateReceiver.java)
-   - Manifest-registered (AndroidManifest.xml) for process death resilience
-   - State machine: RINGING/OFFHOOK → set hasSeenActive, IDLE → check answered
-   - 3s re-check after call end, 2s delay before next contact, 1.5s idle stability
+admin/src/components/
+  AdminSidebar.tsx
+  StatsCard.tsx
+  StatusBadge.tsx
+  LoadingSkeleton.tsx
 
-5. **Analytics Pipeline** (AnalyticsDatabase.java + AnalyticsSyncWorker.java)
-   - Local database: safesphere_analytics.db (Room) with analytics_events table
-   - Event types: registration, login, protection_enabled, trigger_source, call_attempt, call_connected, sms_sent, location_shared, etc.
-   - Sync: WorkManager every 15 min, batched 100 events/request to /api/analytics/ingest
-   - Idempotency: client-generated UUID per event
+admin/src/lib/supabase/
+  client.ts
+  server.ts
 
-6. **Revocation Check** (RevocationCheckWorker.java → /api/revocation/check)
-   - WorkManager every 15 min
-   - Detects: force logout, revocation version increment, admin messages
-   - Response includes pending_messages array
-   - On revocation: stops service, clears analytics DB, cancels jobs, logs out
+---
 
-7. **Admin Dashboard Metrics** (/api/admin/dashboard/metrics)
-   - Queries: total_users, active_users, removed_users, total_incidents, outcomes (safe_self, call_connected)
-   - Charts: daily incidents (LineChart), funnel (BarChart), trigger sources
-   - Data refreshes real-time, powered by Supabase queries
+## SUPABASE SCHEMA — VERIFIED REAL COLUMNS ONLY
 
-8. **User Removal (Revocation)** (/api/admin/remove-user)
-   - Increment revocation_version atomic transaction
-   - Set is_active=false, revoked_at=now(), revocation_reason, revocation_message
-   - Log to admin_actions audit table (immutable)
-   - Next check by RevocationCheckWorker detects change, stops app
+Supabase Project URL: https://geyjrugnxhmtcwwuuiab.supabase.co
 
-### Database Schema (Supabase PostgreSQL)
-**Main Tables:**
-- `users` (id, name, phone_hash, masked_phone, is_active, revoked_at, revocation_version, revocation_reason)
-- `incidents` (id, user_id, trigger_source, call_connected, sms_sent, location_shared, outcome, safe_acknowledged)
-- `analytics_events` (event_id UUID, user_id, session_id, event_type, schema_version, client_ts_ms, payload_json, synced)
-- `admin_accounts` (id, email, password_hash, is_active, created_at)
-- `admin_messages` (id, subject, body, message_type, is_critical, target_user_id, created_at)
-- `revocation_tokens` (user_id, revocation_version, last_checked_at)
-- `saved_verifications` (id, incident_id, evidence_type, evidence_notes, verified_by_admin, verified_at)
-- `admin_actions` (id, admin_id, action, resource_type, resource_id, timestamp) [IMMUTABLE AUDIT LOG]
+### TABLE: users
+id (uuid)
+display_name (text)
+phone_hash (text) — stores RAW phone number
+is_active (boolean)
+created_at (timestamptz)
+updated_at (timestamptz)
+last_app_open (timestamptz)
+device_model (text)
+android_version (text)
+app_version (text)
+total_emergencies (integer)
+os_type (text)
+keyword (text)
+emergency_contact_1 (text)
+emergency_contact_2 (text)
+emergency_contact_3 (text)
 
-### Networking & Config
-- **Android API Base:** buildConfigField VERCEL_BASE_URL = "http://192.168.0.108:3000/api/" (configurable)
-- **HTTP Timeouts:** 15s connect, 30s read, 30s write (NetworkConfig.java)
-- **Phone Hash Salt:** "SafeSphere2024SecureSalt32Chars!!" (matching Android & Web for consistency)
-- **Supabase Anon Key:** buildConfigField SUPABASE_ANON_KEY
+### TABLE: emergency_events
+id (uuid)
+user_id (uuid → users.id)
+trigger_type (text)
+triggered_at (timestamptz)
+session_id (text)
+location_lat (numeric)
+location_lng (numeric)
+location_accuracy (numeric)
+status (text)
+primary_contact_called (text)
+primary_contact_duration_s (integer)
+primary_contact_answered (boolean)
+secondary_contact_called (text)
+secondary_contact_duration_s (integer)
+secondary_contact_answered (boolean)
+tertiary_contact_called (text)
+tertiary_contact_duration_s (integer)
+tertiary_contact_answered (boolean)
+sms_sent_to (text)
+resolved_at (timestamptz)
+resolution_type (text)
+admin_notes (text)
+time_to_first_contact_s (integer)
+time_to_answer_s (integer)
+time_to_resolve_s (integer)
+phone_battery_percent (integer)
+phone_on_silent (boolean)
+has_location_enabled (boolean)
+is_test_event (boolean)
+requires_admin_review (boolean)
+created_at (timestamptz)
+updated_at (timestamptz)
 
-### Testing Frameworks
-- **Android:** JUnit 4.13.2, Espresso 3.6.1, Mockito (implied by patterns)
-- **Web:** TypeScript strict mode, Next.js built-in testing support
+### TABLE: emergency_feedback
+id (uuid)
+event_id (uuid → emergency_events.id)
+user_id (uuid → users.id)
+was_real_emergency (boolean)
+was_rescued_or_helped (boolean)
+rating (integer 1-5)
+feedback_text (text)
+feedback_category (text)
+helpful_features (text[])
+admin_reviewed (boolean)
+admin_response (text)
+admin_reviewed_at (timestamptz)
+submitted_at (timestamptz)
+created_at (timestamptz)
 
-### Known Critical Issues Being Addressed
-- Emergency call system: multi-contact fallback with polling reliability
-- Session persistence: SharedPreferences survival across app kills
-- Keyword detection: Vosk offline accuracy with low battery impact
-- Phone state listener: Crash handling and process death resilience (manifest receiver)
-- Auth flows: Supabase session cookies + middleware-based route protection
-- Analytics: Batch sync with idempotency and retry logic
-- Revocation: Atomic multi-step user removal with immutable audit trail
+### TABLE: admin_messages
+id (uuid)
+subject (text)
+body (text)
+target_user_id (uuid)
+is_critical (boolean)
+created_at (timestamptz)
+
+### TABLE: pending_messages
+id (uuid)
+user_id (uuid)
+message_id (uuid)
+status (text)
+created_at (timestamptz)
+delivered_at (timestamptz)
+
+### TABLE: admin_accounts
+id (uuid)
+supabase_uid (text)
+email (text)
+display_name (text)
+role (text)
+is_active (boolean)
+created_at (timestamptz)
+
+### TABLE: audit_logs
+id (uuid)
+admin_id (uuid)
+action (text)
+target_user_id (uuid)
+details (jsonb)
+created_at (timestamptz)
+
+### TABLE: saved_verifications
+id (uuid)
+user_id (uuid)
+incident_session_id (text)
+verified_by (text)
+evidence_type (text)
+notes (text)
+verified_at (timestamptz)
+
+### COLUMNS THAT DO NOT EXIST — NEVER USE THESE
+phone_masked
+last_seen_at
+revoked_at
+email (in users table)
+revocation_version
+revocation_reason
+revocation_tokens (table does not exist)
+incidents (table does not exist — use emergency_events)
+admin_actions (table does not exist — use audit_logs)
+outcome
+was_rescued
+reviewed_by_admin
+message_type
+priority
+read_at
+acknowledged_at
+
+---
+
+## ANDROID KEY PATTERNS — VERIFIED
+
+### Prefs.java — Key Methods (verified to exist)
+Authentication:
+  setLoggedIn / isLoggedIn
+  setSupabaseUserId / getSupabaseUserId   ← USE THIS, not getUserId()
+  setUserPhone / getUserPhone
+  setUserName / getUserName
+  setKeyword / getKeyword
+
+Emergency contacts:
+  setEmergency1 / setEmergency2 / setEmergency3
+  getEmergencyNumbers() → String[]
+
+Protection:
+  setProtectionEnabled / isProtectionEnabled
+
+Emergency session:
+  setLastEmergencyEventId / getLastEmergencyEventId
+  setCurrentEmergencySessionId / getCurrentEmergencySessionId
+  setCallSequenceIndex / getCallSequenceIndex
+  setCallStartTime / getCallStartTime
+  clearCallSequence
+
+Location:
+  setLastKnownLocation / getLastKnownLocationLat / getLastKnownLocationLng
+
+Offline sync queue:
+  setProfileSyncPending / isProfileSyncPending
+  setPendingProfileData(ctx, name, keyword, e1, e2, e3)
+  getPendingProfileName / getPendingProfileKeyword
+  getPendingProfileE1 / getPendingProfileE2 / getPendingProfileE3
+  clearPendingProfileData
+
+Admin messages:
+  getPendingAdminMessages / addPendingAdminMessage / clearPendingAdminMessages
+
+Revocation:
+  isPendingRevocation / setPendingRevocation
+  getRevocationMessage / setRevocationMessage
+
+### SupabaseClient.java — Key Methods (verified to exist)
+getUserByPhone(String phone) → JSONObject or null
+getUserProfileByPhone(String phone) → JSONObject or null
+insertRow(String table, JSONObject data) → SupabaseResponse
+insertRowReturningRepresentation(String table, JSONObject data) → SupabaseResponse
+updateRow(String table, String filterColumn, String filterValue, JSONObject data) → SupabaseResponse
+updateEmergencyEventResults(String eventId, JSONObject updates) → SupabaseResponse
+incrementTotalEmergencies(String userId) → void
+toIso8601(long millis) → String   ← ALWAYS use this for timestamps
+submitEmergencyFeedback(EmergencyFeedbackData) → SupabaseResponse
+
+---
+
+## EMERGENCY FLOW — VERIFIED CURRENT STATE
+
+Trigger (keyword score≥5 / shake+3 / manual button)
+  → EmergencyManager.initiateEmergency()
+  → Insert row to emergency_events (Supabase)
+  → Call Contact 1 → PhoneStateReceiver monitors state
+  → Not answered → Call Contact 2 → Call Contact 3
+  → SMS sent to all contacts with location
+  → notifySequenceComplete() called
+  → PATCH emergency_events with call results + timing
+  → Feedback notification shown
+  → EmergencyFeedbackActivity → submit to emergency_feedback
+  → Return to MainActivity
+
+Time calculations (verified working):
+  time_to_first_contact_s = time from emergency start to first call placed
+  time_to_answer_s = time_to_resolve_s minus answered call duration
+  time_to_resolve_s = time from emergency trigger to sequence complete
+
+---
+
+## OFFLINE SYNC — CURRENT IMPLEMENTATION
+
+Profile changes:
+  Online: saved to Prefs + pushed to Supabase immediately
+  Offline: saved to Prefs + Prefs.setProfileSyncPending = true
+           + SyncWorker.scheduleSyncWhenOnline() called
+  Sync: WorkManager SyncWorker runs automatically when internet returns
+        Works even if app is completely killed
+
+Feedback:
+  Online: submitted to emergency_feedback table immediately
+  Offline: saved to Prefs + Prefs.setFeedbackSyncPending = true
+           + SyncWorker.scheduleSyncWhenOnline() called
+  Sync: WorkManager SyncWorker handles feedback sync automatically
+
+SyncWorker (android/app/src/main/java/com/example/safesphere/SyncWorker.java):
+  - Extends Worker (WorkManager)
+  - Constraint: NetworkType.CONNECTED (only runs when internet available)
+  - Handles both profile sync and feedback sync in one job
+  - Returns Result.retry() if any sync fails (WorkManager retries automatically)
+  - Scheduled with ExistingWorkPolicy.REPLACE (deduplicates multiple pending syncs)
+  - Tag: "offline_sync"
+  - Unique work name: "safesphere_offline_sync"
+
+Emergency events:
+  Calls and SMS work offline always (no internet needed)
+  Supabase insert may fail offline but emergency still completes
+
+---
+
+## ADMIN DASHBOARD DESIGN SYSTEM
+
+Page background:   #08090e
+Card background:   #111219
+Sidebar:           #0c0d13
+Input background:  #16171f
+Border:            border-white/[0.08]
+
+Text:
+  Primary:         #f1f5f9 (slate-100)
+  Secondary:       #94a3b8 (slate-400)
+  Muted:           #64748b (slate-500)
+
+Accents:
+  Success:         #10b981 (emerald-500)
+  Danger:          #ef4444 (red-500)
+  Info:            #06b6d4 (cyan-500)
+
+Cards:             rounded-2xl, border border-white/[0.06]
+Buttons:           rounded-xl, bg-emerald-600 hover:bg-emerald-500
+Inputs:            rounded-xl, border border-white/10
+
+---
+
+## ANDROID BUTTON LOADING PATTERN — REQUIRED
+
+DO NOT use setEnabled(false) alone — makes button invisible in dark mode.
+
+Correct pattern:
+  button.setEnabled(!loading);
+  button.setText(loading ? "Loading..." : "Submit");
+  button.setBackgroundTintList(
+      ColorStateList.valueOf(Color.parseColor("#C2185B")));
+
+Button XML must use BOTH:
+  android:background="@drawable/bg_form_primary_button"
+  android:backgroundTint="#C2185B"
+
+---
+
+## CODING RULES — ALWAYS FOLLOW
+
+1. NEVER invent columns, methods, or file names — verify first
+2. ALWAYS read actual files before modifying
+3. ALL Supabase calls in background threads (new Thread or AsyncTask)
+4. ALL Supabase calls in try-catch blocks
+5. Emergency calls MUST work even if Supabase is completely down
+6. Admin API routes use createServiceClient() — bypasses RLS
+7. User API routes use createClient() with auth verification
+8. Timestamps: ISO 8601 always, never Unix milliseconds
+9. getUserByPhone() returns JSONObject or null (not JSONArray)
+10. Java only for Android — never Kotlin
+11. Git: work on develop branch, merge to main when stable
+12. Secrets: local.properties only (GITIGNORED)
+13. getSupabaseUserId() NOT getUserId() — getUserId() does not exist in Prefs
+
+---
+
+## KNOWN ISSUES — CURRENT
+
+1. Admin dashboard: not deployed to Vercel yet
+  Status: works on localhost:3000
+
+2. Admin message polling: low priority
+  Status: pollAdminMessagesFromSupabase() exists, uses getSupabaseUserId() correctly
+  Note: Only fires when SafeSphereService is running (protection ON)
+
+All previous blocking issues have been resolved:
+  - Emergency event insert: FIXED
+  - Time calculations: FIXED
+  - Offline profile sync: FIXED (WorkManager)
+  - Offline feedback sync: FIXED (WorkManager)
+  - Login offline error message: FIXED
+  - Register offline error message: FIXED
+  - GPS prompt when protection enabled: FIXED
+  - LoginActivity appearing after ProfileActivity: FIXED
+    Root cause: setContentView not called before startActivity(ProfileActivity)
+    Fix: initialize views before starting ProfileActivity in onCreate()
+
+---
+
+## WHAT IS WORKING — VERIFIED
+
+Android:
+  Login/register with Supabase verification
+  Auto-login on app restart
+  Emergency flow: shake/keyword/manual trigger
+  3-contact call sequence with fallback
+  SMS to all contacts with location
+  Call state detection via PhoneStateReceiver
+  Call duration and answered status from CallLog
+  Time calculations: time_to_first_contact_s, time_to_answer_s, time_to_resolve_s
+  Feedback notification after emergency
+  EmergencyFeedbackActivity submission
+  Profile save/load with Supabase
+  Offline profile save → WorkManager syncs when internet returns (survives app kill)
+  Offline feedback save → WorkManager syncs when internet returns (survives app kill)
+  Login shows correct error when offline (no internet message)
+  Register shows correct error when offline (no internet message)
+  GPS prompt shown when protection enabled and GPS is off (optional, dismissable)
+  Battery optimization prompt (once only)
+  API keys in local.properties (not hardcoded)
+
+Admin Dashboard:
+  All 8 pages working on localhost:3000
+  Dashboard: 4 metric cards + funnel + charts
+  Incidents: table + expand detail + outcome dropdown
+  Users: list + search + filter
+  User detail: profile + emergency history + feedback
+  Analytics: 5 stat cards + 4 charts
+  Feedback: user feedback list
+  Saved verifications: admin-verified rescues
+  Audit: admin action log

@@ -85,6 +85,20 @@ Emergency feedback (EmergencyFeedbackActivity.submitFeedback):
    Prefs.setPendingNewFeatureData(this, ...);
    SyncWorker.scheduleSyncWhenOnline(this);
 
+## Changelog
+
+### 2026-04-03 (Latest)
+- **Replaced single-key offline queues with JSON array queues**
+- Emergency events: `enqueueEmergencyEvent()` / `getEmergencyEventQueue()` / `removeEmergencyEventFromQueue()`
+- Call results: `enqueueCallResults()` / `getCallResultsQueue()` / `removeCallResultsFromQueue()`
+- Feedback: `enqueueFeedback()` / `getFeedbackQueue()` / `removeFeedbackFromQueue()`
+- **Key improvement**: SyncWorker now loops through full arrays — syncs every pending item (no data loss on overwrite)
+- **Removed 19 old Prefs methods**: setPendingEmergencyEventData, getPendingEventId, etc.
+- **Added 12 new Prefs methods**: queue operations for emergency events, call results, feedback
+- EmergencyManager: Updated all `setPending*` calls → `enqueue*` calls
+- Removed: setEmergencyEventSyncPending, setCallResultsSyncPending, setFeedbackSyncPending calls
+- **Multiple offline emergencies now fully preserved and synced correctly**
+
 3. In SyncWorker.doWork():
    if (Prefs.isNewFeatureSyncPending(ctx)) {
        anyFailed = !syncNewFeature(ctx);

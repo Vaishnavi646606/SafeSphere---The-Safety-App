@@ -307,7 +307,28 @@ Emergency session:
 Location:
   setLastKnownLocation / getLastKnownLocationLat / getLastKnownLocationLng
 
-Offline sync queue:
+Offline sync queues (JSON array — supports multiple):
+  Emergency events:
+    enqueueEmergencyEvent(ctx, eventId, userId, triggerType,
+        sessionId, triggeredAt, battery, lat, lng, hasLocation)
+    getEmergencyEventQueue(ctx) → JSONArray
+    removeEmergencyEventFromQueue(ctx, eventId)
+    isEmergencyEventQueueEmpty(ctx) → boolean
+
+  Call results:
+    enqueueCallResults(ctx, eventId, resultsJson)
+    getCallResultsQueue(ctx) → JSONArray
+    removeCallResultsFromQueue(ctx, eventId)
+    isCallResultsQueueEmpty(ctx) → boolean
+
+  Feedback:
+    enqueueFeedback(ctx, eventId, userId, wasReal,
+        wasRescued, rating, text)
+    getFeedbackQueue(ctx) → JSONArray
+    removeFeedbackFromQueue(ctx, eventId)
+    isFeedbackQueueEmpty(ctx) → boolean
+
+Offline sync — profile (single — latest wins):
   setProfileSyncPending / isProfileSyncPending
   setPendingProfileData(ctx, name, keyword, e1, e2, e3)
   getPendingProfileName / getPendingProfileKeyword

@@ -283,12 +283,11 @@ public class EmergencyManager {
                     Prefs.setLastEmergencyEventId(ctx, emergencyEventId);
                     double lat = Prefs.getLastKnownLocationLat(ctx);
                     double lng = Prefs.getLastKnownLocationLng(ctx);
-                    Prefs.setPendingEmergencyEventData(ctx,
+                    Prefs.enqueueEmergencyEvent(ctx,
                             emergencyEventId, userId, triggerType,
                             emergencySessionId, nowIsoUtc(),
                             finalBatteryPercent, lat, lng,
                             isLocationEnabled(ctx));
-                    Prefs.setEmergencyEventSyncPending(ctx, true);
                     SyncWorker.scheduleSyncWhenOnline(ctx);
                 } else {
                     SupabaseClient.SupabaseResponse response2 =
@@ -302,12 +301,11 @@ public class EmergencyManager {
                         Prefs.setLastEmergencyEventId(ctx, emergencyEventId);
                         double lat = Prefs.getLastKnownLocationLat(ctx);
                         double lng = Prefs.getLastKnownLocationLng(ctx);
-                        Prefs.setPendingEmergencyEventData(ctx,
+                        Prefs.enqueueEmergencyEvent(ctx,
                                 emergencyEventId, userId, triggerType,
                                 emergencySessionId, nowIsoUtc(),
                                 finalBatteryPercent, lat, lng,
                                 isLocationEnabled(ctx));
-                        Prefs.setEmergencyEventSyncPending(ctx, true);
                         SyncWorker.scheduleSyncWhenOnline(ctx);
                     } else {
                         String actualEventId = parseInsertedEmergencyEventId(response2.message);
@@ -1699,8 +1697,7 @@ public class EmergencyManager {
                 if (!isOnlineForPatch) {
                     // Offline — save call results for later sync
                     Log.w(TAG, "Offline — queuing call results for later sync");
-                    Prefs.setPendingCallResultsData(ctx, eventId, resultsUpdate.toString());
-                    Prefs.setCallResultsSyncPending(ctx, true);
+                    Prefs.enqueueCallResults(ctx, eventId, resultsUpdate.toString());
                     SyncWorker.scheduleSyncWhenOnline(ctx);
                 } else {
                     SupabaseClient.SupabaseResponse response = SupabaseClient.getInstance(ctx)
@@ -1708,8 +1705,7 @@ public class EmergencyManager {
                     if (!response.success) {
                         // Online but PATCH failed — queue for retry
                         Log.w(TAG, "Call results PATCH failed, queuing: " + response.message);
-                        Prefs.setPendingCallResultsData(ctx, eventId, resultsUpdate.toString());
-                        Prefs.setCallResultsSyncPending(ctx, true);
+                        Prefs.enqueueCallResults(ctx, eventId, resultsUpdate.toString());
                         SyncWorker.scheduleSyncWhenOnline(ctx);
                     } else {
                         Log.d(TAG, "Successfully updated call results to Supabase");

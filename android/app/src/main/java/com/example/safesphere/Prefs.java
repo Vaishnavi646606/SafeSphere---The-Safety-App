@@ -412,181 +412,179 @@ public class Prefs {
                 .apply();
     }
 
-    // ── Offline feedback sync queue ──────────────────────────
-    public static void setFeedbackSyncPending(Context ctx, boolean pending) {
-        getPrefs(ctx).edit().putBoolean("feedback_sync_pending", pending).apply();
+    // ================================================================
+    //  OFFLINE EMERGENCY EVENT QUEUE — JSON Array (supports multiple)
+    // ================================================================
+
+    private static final String KEY_EMERGENCY_EVENT_QUEUE = "emergency_event_queue";
+
+    public static void enqueueEmergencyEvent(Context ctx,
+            String eventId, String userId, String triggerType,
+            String sessionId, String triggeredAt,
+            int batteryPercent, double locationLat, double locationLng,
+            boolean hasLocationEnabled) {
+        try {
+            org.json.JSONArray queue = getEmergencyEventQueue(ctx);
+            org.json.JSONObject item = new org.json.JSONObject();
+            item.put("event_id", eventId);
+            item.put("user_id", userId);
+            item.put("trigger_type", triggerType != null ? triggerType : "UNKNOWN");
+            item.put("session_id", sessionId);
+            item.put("triggered_at", triggeredAt);
+            item.put("battery_percent", batteryPercent);
+            item.put("location_lat", locationLat);
+            item.put("location_lng", locationLng);
+            item.put("has_location_enabled", hasLocationEnabled);
+            queue.put(item);
+            getPrefs(ctx).edit()
+                    .putString(KEY_EMERGENCY_EVENT_QUEUE, queue.toString())
+                    .apply();
+        } catch (Exception e) {
+            android.util.Log.e("Prefs", "enqueueEmergencyEvent failed", e);
+        }
     }
 
-    public static boolean isFeedbackSyncPending(Context ctx) {
-        return getPrefs(ctx).getBoolean("feedback_sync_pending", false);
+    public static org.json.JSONArray getEmergencyEventQueue(Context ctx) {
+        try {
+            String raw = getPrefs(ctx).getString(KEY_EMERGENCY_EVENT_QUEUE, "[]");
+            return new org.json.JSONArray(raw);
+        } catch (Exception e) {
+            return new org.json.JSONArray();
+        }
     }
 
-    public static void setPendingFeedbackData(Context ctx, String eventId, String userId,
-            boolean wasRealEmergency, boolean wasRescued, int rating, String feedbackText) {
-        getPrefs(ctx).edit()
-                .putString("pending_feedback_event_id", eventId)
-                .putString("pending_feedback_user_id", userId)
-                .putBoolean("pending_feedback_real_emergency", wasRealEmergency)
-                .putBoolean("pending_feedback_rescued", wasRescued)
-                .putInt("pending_feedback_rating", rating)
-                .putString("pending_feedback_text", feedbackText)
-                .apply();
-    }
-
-    public static String getPendingFeedbackEventId(Context ctx) {
-        return getPrefs(ctx).getString("pending_feedback_event_id", null);
-    }
-
-    public static String getPendingFeedbackUserId(Context ctx) {
-        return getPrefs(ctx).getString("pending_feedback_user_id", null);
-    }
-
-    public static boolean getPendingFeedbackWasReal(Context ctx) {
-        return getPrefs(ctx).getBoolean("pending_feedback_real_emergency", false);
-    }
-
-    public static boolean getPendingFeedbackWasRescued(Context ctx) {
-        return getPrefs(ctx).getBoolean("pending_feedback_rescued", false);
-    }
-
-    public static int getPendingFeedbackRating(Context ctx) {
-        return getPrefs(ctx).getInt("pending_feedback_rating", 0);
-    }
-
-    public static String getPendingFeedbackText(Context ctx) {
-        return getPrefs(ctx).getString("pending_feedback_text", null);
-    }
-
-    public static void clearPendingFeedbackData(Context ctx) {
-        getPrefs(ctx).edit()
-                .remove("feedback_sync_pending")
-                .remove("pending_feedback_event_id")
-                .remove("pending_feedback_user_id")
-                .remove("pending_feedback_real_emergency")
-                .remove("pending_feedback_rescued")
-                .remove("pending_feedback_rating")
-                .remove("pending_feedback_text")
-
-                    // ── Offline emergency event queue ────────────────────────
-                    public static void setEmergencyEventSyncPending(Context ctx, boolean pending) {
-                        getPrefs(ctx).edit().putBoolean("emergency_event_sync_pending", pending).apply();
-                    }
-
-                    public static boolean isEmergencyEventSyncPending(Context ctx) {
-                        return getPrefs(ctx).getBoolean("emergency_event_sync_pending", false);
-                    }
-
-                    public static void setPendingEmergencyEventData(Context ctx,
-                            String eventId, String userId, String triggerType,
-                            String sessionId, String triggeredAt,
-                            int batteryPercent, double locationLat, double locationLng,
-                            boolean hasLocationEnabled) {
-                        getPrefs(ctx).edit()
-                                .putString("pending_event_id", eventId)
-                                .putString("pending_event_user_id", userId)
-                                .putString("pending_event_trigger_type", triggerType)
-                                .putString("pending_event_session_id", sessionId)
-                                .putString("pending_event_triggered_at", triggeredAt)
-                                .putInt("pending_event_battery", batteryPercent)
-                                .putString("pending_event_lat", String.valueOf(locationLat))
-                                .putString("pending_event_lng", String.valueOf(locationLng))
-                                .putBoolean("pending_event_has_location", hasLocationEnabled)
-                                .apply();
-                    }
-
-                    public static String getPendingEventId(Context ctx) {
-                        return getPrefs(ctx).getString("pending_event_id", null);
-                    }
-
-                    public static String getPendingEventUserId(Context ctx) {
-                        return getPrefs(ctx).getString("pending_event_user_id", null);
-                    }
-
-                    public static String getPendingEventTriggerType(Context ctx) {
-                        return getPrefs(ctx).getString("pending_event_trigger_type", null);
-                    }
-
-                    public static String getPendingEventSessionId(Context ctx) {
-                        return getPrefs(ctx).getString("pending_event_session_id", null);
-                    }
-
-                    public static String getPendingEventTriggeredAt(Context ctx) {
-                        return getPrefs(ctx).getString("pending_event_triggered_at", null);
-                    }
-
-                    public static int getPendingEventBattery(Context ctx) {
-                        return getPrefs(ctx).getInt("pending_event_battery", 0);
-                    }
-
-                    public static double getPendingEventLat(Context ctx) {
-                        try {
-                            return Double.parseDouble(
-                                    getPrefs(ctx).getString("pending_event_lat", "NaN"));
-                        } catch (Exception e) { return Double.NaN; }
-                    }
-
-                    public static double getPendingEventLng(Context ctx) {
-                        try {
-                            return Double.parseDouble(
-                                    getPrefs(ctx).getString("pending_event_lng", "NaN"));
-                        } catch (Exception e) { return Double.NaN; }
-                    }
-
-                    public static boolean getPendingEventHasLocation(Context ctx) {
-                        return getPrefs(ctx).getBoolean("pending_event_has_location", false);
-                    }
-
-                    public static void clearPendingEmergencyEventData(Context ctx) {
-                        getPrefs(ctx).edit()
-                                .remove("emergency_event_sync_pending")
-                                .remove("pending_event_id")
-                                .remove("pending_event_user_id")
-                                .remove("pending_event_trigger_type")
-                                .remove("pending_event_session_id")
-                                .remove("pending_event_triggered_at")
-                                .remove("pending_event_battery")
-                                .remove("pending_event_lat")
-                                .remove("pending_event_lng")
-                                .remove("pending_event_has_location")
-                                .apply();
-                    }
-
-                    // ── Offline call results queue ────────────────────────────
-                    public static void setCallResultsSyncPending(Context ctx, boolean pending) {
-                        getPrefs(ctx).edit().putBoolean("call_results_sync_pending", pending).apply();
-                    }
-
-                    public static boolean isCallResultsSyncPending(Context ctx) {
-                        return getPrefs(ctx).getBoolean("call_results_sync_pending", false);
-                    }
-
-                    public static void setPendingCallResultsData(Context ctx, String eventId,
-                            String resultsJson) {
-                        getPrefs(ctx).edit()
-                                .putString("pending_call_results_event_id", eventId)
-                                .putString("pending_call_results_json", resultsJson)
-                                .apply();
-                    }
-
-                    public static String getPendingCallResultsEventId(Context ctx) {
-                        return getPrefs(ctx).getString("pending_call_results_event_id", null);
-                    }
-
-                    public static String getPendingCallResultsJson(Context ctx) {
-                        return getPrefs(ctx).getString("pending_call_results_json", null);
-                    }
-
-                    public static void clearPendingCallResultsData(Context ctx) {
-                        getPrefs(ctx).edit()
-                                .remove("call_results_sync_pending")
-                                .remove("pending_call_results_event_id")
-                                .remove("pending_call_results_json")
-                                .apply();
-                    }
-
+    public static void removeEmergencyEventFromQueue(Context ctx, String eventId) {
+        try {
+            org.json.JSONArray queue = getEmergencyEventQueue(ctx);
+            org.json.JSONArray updated = new org.json.JSONArray();
+            for (int i = 0; i < queue.length(); i++) {
+                org.json.JSONObject item = queue.getJSONObject(i);
+                if (!eventId.equals(item.optString("event_id"))) {
+                    updated.put(item);
                 }
-                .apply();
+            }
+            getPrefs(ctx).edit()
+                    .putString(KEY_EMERGENCY_EVENT_QUEUE, updated.toString())
+                    .apply();
+        } catch (Exception e) {
+            android.util.Log.e("Prefs", "removeEmergencyEventFromQueue failed", e);
+        }
+    }
+
+    public static boolean isEmergencyEventQueueEmpty(Context ctx) {
+        return getEmergencyEventQueue(ctx).length() == 0;
+    }
+
+    // ================================================================
+    //  OFFLINE CALL RESULTS QUEUE — JSON Array (supports multiple)
+    // ================================================================
+
+    private static final String KEY_CALL_RESULTS_QUEUE = "call_results_queue";
+
+    public static void enqueueCallResults(Context ctx,
+            String eventId, String resultsJson) {
+        try {
+            org.json.JSONArray queue = getCallResultsQueue(ctx);
+            org.json.JSONObject item = new org.json.JSONObject();
+            item.put("event_id", eventId);
+            item.put("results_json", resultsJson);
+            queue.put(item);
+            getPrefs(ctx).edit()
+                    .putString(KEY_CALL_RESULTS_QUEUE, queue.toString())
+                    .apply();
+        } catch (Exception e) {
+            android.util.Log.e("Prefs", "enqueueCallResults failed", e);
+        }
+    }
+
+    public static org.json.JSONArray getCallResultsQueue(Context ctx) {
+        try {
+            String raw = getPrefs(ctx).getString(KEY_CALL_RESULTS_QUEUE, "[]");
+            return new org.json.JSONArray(raw);
+        } catch (Exception e) {
+            return new org.json.JSONArray();
+        }
+    }
+
+    public static void removeCallResultsFromQueue(Context ctx, String eventId) {
+        try {
+            org.json.JSONArray queue = getCallResultsQueue(ctx);
+            org.json.JSONArray updated = new org.json.JSONArray();
+            for (int i = 0; i < queue.length(); i++) {
+                org.json.JSONObject item = queue.getJSONObject(i);
+                if (!eventId.equals(item.optString("event_id"))) {
+                    updated.put(item);
+                }
+            }
+            getPrefs(ctx).edit()
+                    .putString(KEY_CALL_RESULTS_QUEUE, updated.toString())
+                    .apply();
+        } catch (Exception e) {
+            android.util.Log.e("Prefs", "removeCallResultsFromQueue failed", e);
+        }
+    }
+
+    public static boolean isCallResultsQueueEmpty(Context ctx) {
+        return getCallResultsQueue(ctx).length() == 0;
+    }
+
+    // ================================================================
+    //  OFFLINE FEEDBACK QUEUE — JSON Array (supports multiple)
+    // ================================================================
+
+    private static final String KEY_FEEDBACK_QUEUE = "feedback_queue";
+
+    public static void enqueueFeedback(Context ctx,
+            String eventId, String userId,
+            boolean wasRealEmergency, boolean wasRescued,
+            int rating, String feedbackText) {
+        try {
+            org.json.JSONArray queue = getFeedbackQueue(ctx);
+            org.json.JSONObject item = new org.json.JSONObject();
+            item.put("event_id", eventId);
+            item.put("user_id", userId);
+            item.put("was_real_emergency", wasRealEmergency);
+            item.put("was_rescued", wasRescued);
+            item.put("rating", rating);
+            item.put("feedback_text", feedbackText != null ? feedbackText : "");
+            queue.put(item);
+            getPrefs(ctx).edit()
+                    .putString(KEY_FEEDBACK_QUEUE, queue.toString())
+                    .apply();
+        } catch (Exception e) {
+            android.util.Log.e("Prefs", "enqueueFeedback failed", e);
+        }
+    }
+
+    public static org.json.JSONArray getFeedbackQueue(Context ctx) {
+        try {
+            String raw = getPrefs(ctx).getString(KEY_FEEDBACK_QUEUE, "[]");
+            return new org.json.JSONArray(raw);
+        } catch (Exception e) {
+            return new org.json.JSONArray();
+        }
+    }
+
+    public static void removeFeedbackFromQueue(Context ctx, String eventId) {
+        try {
+            org.json.JSONArray queue = getFeedbackQueue(ctx);
+            org.json.JSONArray updated = new org.json.JSONArray();
+            for (int i = 0; i < queue.length(); i++) {
+                org.json.JSONObject item = queue.getJSONObject(i);
+                if (!eventId.equals(item.optString("event_id"))) {
+                    updated.put(item);
+                }
+            }
+            getPrefs(ctx).edit()
+                    .putString(KEY_FEEDBACK_QUEUE, updated.toString())
+                    .apply();
+        } catch (Exception e) {
+            android.util.Log.e("Prefs", "removeFeedbackFromQueue failed", e);
+        }
+    }
+
+    public static boolean isFeedbackQueueEmpty(Context ctx) {
+        return getFeedbackQueue(ctx).length() == 0;
     }
 
 }
-

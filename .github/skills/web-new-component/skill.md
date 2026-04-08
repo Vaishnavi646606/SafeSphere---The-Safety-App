@@ -10,10 +10,10 @@ Create a new React component for SafeSphere Next.js admin dashboard following ex
 - Implementing new admin features
 
 ## Prerequisites
-- SafeSphere Next.js project (`safesphere-admin/`)
+- SafeSphere Next.js project (`admin/`)
 - React 19.2.3 and TypeScript understanding
 - Tailwind CSS 4.x knowledge
-- Component file at `safesphere-admin/src/components/` or `safesphere-admin/src/app/`
+- Component file at `admin/src/components/` or `admin/src/app/`
 
 ## Steps
 
@@ -26,7 +26,7 @@ Identify:
 - [ ] Does it need authentication check? (in page.tsx, not component)
 
 ### Step 2: Create Component File
-**Location:** `safesphere-admin/src/components/YourComponent.tsx`
+**Location:** `admin/src/components/YourComponent.tsx`
 
 **Template Pattern (from existing components):**
 ```typescript
@@ -234,7 +234,7 @@ export function MyDataComponent() {
 ### Step 6: Create Page Component (if in app/)
 **Pattern from `/admin/dashboard/page.tsx`, `/admin/incidents/page.tsx`:**
 ```typescript
-// safesphere-admin/src/app/admin/your-page/page.tsx
+// admin/src/app/admin/your-page/page.tsx
 
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
@@ -300,7 +300,7 @@ describe('YourComponent', () => {
 ```
 
 ## Verification
-- [ ] TypeScript file created at `safesphere-admin/src/components/YourComponent.tsx` or `safesphere-admin/src/app/admin/...`
+- [ ] TypeScript file created at `admin/src/components/YourComponent.tsx` or `admin/src/app/admin/...`
 - [ ] Has `'use client'` directive if interactive
 - [ ] Exports component with proper TypeScript types
 - [ ] Styled with Tailwind CSS (no inline styles)
@@ -363,8 +363,8 @@ import { Search } from 'lucide-react';
 
 interface User {
   id: string;
-  name: string;
-  masked_phone: string;
+  display_name: string;
+  phone_hash: string;
 }
 
 export function UserSearch() {
@@ -411,8 +411,8 @@ export function UserSearch() {
       <div className="mt-4 space-y-2">
         {results.map((user) => (
           <div key={user.id} className="p-3 bg-gray-50 rounded border border-gray-200">
-            <p className="font-semibold">{user.name}</p>
-            <p className="text-sm text-gray-600">{user.masked_phone}</p>
+            <p className="font-semibold">{user.display_name}</p>
+            <p className="text-sm text-gray-600">{user.phone_hash}</p>
           </div>
         ))}
       </div>

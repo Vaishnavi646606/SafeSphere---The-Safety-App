@@ -214,4 +214,4 @@ Before approving any page:
 - [ ] Page looks good at 1280px, 1440px, and 1920px width
 
 ## Changelog
-- Initial creation — Design system for SafeSphere Admin
+- 2026-04-08 - Initial creation — Design system for SafeSphere Admin

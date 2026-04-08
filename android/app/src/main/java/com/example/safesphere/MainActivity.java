@@ -312,14 +312,55 @@ public class MainActivity extends AppCompatActivity {
     // ---------- SHARE LOCATION (CURRENT / LIVE) ----------
 
     private void shareLocation(boolean live) {
-        boolean enabled = isLocationServiceEnabled();
+        // Check connectivity first - never make network calls when offline
+        android.net.ConnectivityManager cm =
+            (android.net.ConnectivityManager)
+            getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+        android.net.NetworkInfo ni =
+            cm != null ? cm.getActiveNetworkInfo() : null;
+        boolean isOnline = ni != null && ni.isConnected();
 
-        // ❌ Location OFF → open settings, auto-send on return
+        if (!isOnline) {
+            // Offline - use last stored location directly
+            // Never trigger any network call or session check
+            double lat = Prefs.getLastKnownLocationLat(this);
+            double lng = Prefs.getLastKnownLocationLng(this);
+
+            if (!Double.isNaN(lat) && !Double.isNaN(lng)) {
+            long timeMs = Prefs.getLastKnownLocationTime(this);
+            long diffMin = (System.currentTimeMillis() - timeMs) / 60000;
+            String age = diffMin < 1 ? "just now"
+                : diffMin < 60 ? diffMin + " min ago"
+                : (diffMin / 60) + " hr ago";
+            String link = "https://maps.google.com/?q=" + lat + "," + lng;
+            String text = live
+                ? "📍 Last Known Location (" + age + "): " + link
+                  + "\n🔴 Live Location: " + link
+                : "📍 Last Known Location (" + age + "): " + link;
+
+            Intent sendIntent = new Intent(Intent.ACTION_SEND);
+            sendIntent.setType("text/plain");
+            sendIntent.putExtra(Intent.EXTRA_TEXT, text);
+            startActivity(Intent.createChooser(sendIntent,
+                "Share location via"));
+            } else {
+            Toast.makeText(this,
+                "No location saved yet. Enable GPS and wait a moment.",
+                Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
+
+        // Online - use existing logic with live location detection
+        boolean enabled = isLocationServiceEnabled();
         if (!enabled) {
             waitingForLocationEnable = true;
             pendingShareLive = live;
-            Toast.makeText(this, "Please turn ON location first", Toast.LENGTH_LONG).show();
-            startActivity(new Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+            Toast.makeText(this,
+                "Please turn ON location first",
+                Toast.LENGTH_LONG).show();
+            startActivity(new Intent(
+                android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS));
             return;
         }
 

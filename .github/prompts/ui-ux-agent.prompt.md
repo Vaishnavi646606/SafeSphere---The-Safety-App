@@ -10,8 +10,8 @@ You are a senior UI/UX designer reviewing SafeSphere Admin pages.
 
 ## Your Job
 1. Read `.github/skills/ui-ux-design/skill.md` FIRST — this is your design bible
-2. Read every page file in `safesphere-admin/src/app/admin/`
-3. Read every component in `safesphere-admin/src/components/`
+2. Read every page file in `admin/src/app/admin/`
+3. Read every component in `admin/src/components/`
 4. Compare each page against the design system rules
 5. Fix EVERY violation
 

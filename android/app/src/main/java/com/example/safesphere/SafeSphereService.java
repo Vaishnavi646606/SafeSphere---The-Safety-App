@@ -59,7 +59,7 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
 
     private static final int  SAMPLE_RATE  = 16000;
     private static final int  BUFFER_MULT  = 4;
-    private static final long BG_LOCATION_REFRESH_MS = 5 * 60 * 1000L;
+    private static final long BG_LOCATION_REFRESH_MS = 3 * 60 * 1000L;
     private static final String ADMIN_MESSAGE_CHANNEL_ID = "safesphere_messages";
     private static final long ADMIN_MESSAGE_POLL_MS = 5 * 60 * 1000L;
 
@@ -159,6 +159,7 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
         // Battery-friendly refresh so emergency fallback location stays recent.
         startBackgroundLocationRefresh();
         startAdminMessagePolling();
+        captureFirstLocationOnStartup();
 
         Log.d(TAG, "Keyword in prefs: '" + Prefs.getKeyword(this) + "'");
         initVosk();
@@ -347,43 +348,82 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
 
     private void requestSingleBackgroundLocationUpdate() {
         boolean hasFine = ActivityCompat.checkSelfPermission(this,
-                Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+                Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
         boolean hasCoarse = ActivityCompat.checkSelfPermission(this,
-                Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+                Manifest.permission.ACCESS_COARSE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
         if (!hasFine && !hasCoarse) {
-            Log.d(TAG, "Skipping background location refresh: no location permission");
+            Log.d(TAG, "Skipping location refresh: no permission");
             return;
         }
 
         LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
-        if (lm == null) {
-            return;
-        }
+        if (lm == null) return;
 
         LocationListener listener = new LocationListener() {
             @Override
-            public void onLocationChanged(Location location) {
+            public void onLocationChanged(android.location.Location location) {
                 if (location == null) return;
-                long timestampMs = location.getTime() > 0 ? location.getTime() : System.currentTimeMillis();
-                Prefs.setLastKnownLocation(getApplicationContext(),
-                        location.getLatitude(), location.getLongitude(), timestampMs);
-                Log.d(TAG, "Background location updated for emergency fallback");
-                try {
-                    lm.removeUpdates(this);
-                } catch (Exception ignored) {
+                long timestampMs = location.getTime() > 0
+                        ? location.getTime()
+                        : System.currentTimeMillis();
+                double lat = location.getLatitude();
+                double lng = location.getLongitude();
+
+                // Always save locally first
+                Prefs.setLastKnownLocation(
+                        getApplicationContext(), lat, lng, timestampMs);
+                Prefs.setFirstLocationCaptured(getApplicationContext(), true);
+                Log.d(TAG, "Location updated locally: " + lat + "," + lng);
+
+                // Sync to Supabase only if online
+                android.net.ConnectivityManager cm =
+                        (android.net.ConnectivityManager)
+                        getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+                android.net.NetworkInfo ni =
+                        cm != null ? cm.getActiveNetworkInfo() : null;
+                boolean isOnline = ni != null && ni.isConnected();
+
+                if (isOnline) {
+                    String userId = Prefs.getSupabaseUserId(getApplicationContext());
+                    if (userId != null && !userId.isEmpty()) {
+                        SupabaseClient client =
+                                SupabaseClient.getInstance(getApplicationContext());
+                        client.updateUserLocation(userId, lat, lng);
+                        Prefs.setLastSyncedLocation(
+                                getApplicationContext(), lat, lng, timestampMs);
+                        Log.d(TAG, "Location synced to Supabase");
+                    }
+                } else {
+                    Log.d(TAG, "Offline - location saved locally only");
                 }
+
+                try { lm.removeUpdates(this); } catch (Exception ignored) {}
             }
         };
 
         try {
             if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                lm.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, listener, Looper.getMainLooper());
+                lm.requestSingleUpdate(
+                        LocationManager.NETWORK_PROVIDER, listener,
+                        Looper.getMainLooper());
             } else if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                lm.requestSingleUpdate(LocationManager.GPS_PROVIDER, listener, Looper.getMainLooper());
+                lm.requestSingleUpdate(
+                        LocationManager.GPS_PROVIDER, listener,
+                        Looper.getMainLooper());
+            } else {
+                Log.d(TAG, "No location provider enabled - skipping refresh");
             }
         } catch (Exception e) {
-            Log.e(TAG, "Background location refresh failed", e);
+            Log.e(TAG, "requestSingleBackgroundLocationUpdate failed", e);
         }
+    }
+
+    private void captureFirstLocationOnStartup() {
+        if (Prefs.isFirstLocationCaptured(getApplicationContext())) return;
+        Log.d(TAG, "First location capture on startup");
+        requestSingleBackgroundLocationUpdate();
     }
 
     private void startAdminMessagePolling() {

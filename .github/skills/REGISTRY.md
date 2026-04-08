@@ -18,7 +18,10 @@ This registry tracks all available skills and agents for SafeSphere development.
 | Review Agent | `.github/prompts/review-agent.prompt.md` | Automated code review | Agent | 2026-03-30 |
 | Fix Agent | `.github/prompts/fix-agent.prompt.md` | Apply fixes to code issues | Agent | 2026-03-30 |
 | Test Agent | `.github/prompts/test-agent.prompt.md` | Generate tests for code | Agent | 2026-03-30 |
-| ui-ux-agent | `.github/prompts/ui-ux-agent.prompt.md` | Review and fix UI/UX across all pages | Agent | Today |
+| New Feature Agent | `.github/prompts/new-feature.prompt.md` | Structured implementation flow for new features | Agent | 2026-03-30 |
+| Scan Codebase Agent | `.github/prompts/scan-codebase.prompt.md` | Deep codebase scan and context extraction | Agent | 2026-03-30 |
+| Update Skills Agent | `.github/prompts/update-skills.prompt.md` | Update skills and registry after changes | Agent | 2026-03-30 |
+| ui-ux-agent | `.github/prompts/ui-ux-agent.prompt.md` | Review and fix UI/UX across all pages | Agent | 2026-04-08 |
 
 ## Android Development Skills
 
@@ -30,17 +33,17 @@ This registry tracks all available skills and agents for SafeSphere development.
 
 | Skill Name | Path | Description | Last Updated |
 |------------|------|-------------|--------------|
-| Create Web API Route | `.github/skills/web-new-api-route/skill.md` | Create Next.js API routes with auth, Supabase queries, error handling | 2026-03-30 |
+| Create Web API Route | `.github/skills/web-new-api-route/skill.md` | Create Next.js API routes with auth, Supabase queries, error handling | 2026-04-08 |
 | Create Web Component | `.github/skills/web-new-component/skill.md` | Create React components with TypeScript, Tailwind CSS, Lucide icons | 2026-03-30 |
 | UI/UX Review | `.github/skills/ui-ux-review/skill.md` | Review UI auth states, sidebar visibility, responsive behavior, and user flow regressions | 2026-03-30 |
-| ui-ux-design | `.github/skills/ui-ux-design/skill.md` | Design system rules and visual standards | Today |
+| ui-ux-design | `.github/skills/ui-ux-design/skill.md` | Design system rules and visual standards | 2026-04-08 |
 
 ## Critical Path Skills
 
 | Skill Name | Path | Description | Last Updated |
 |------------|------|-------------|--------------|
 | Emergency Call System | `.github/skills/emergency-call-system/skill.md` | Emergency call sequence, phone state detection, battery optimization, testing | 2026-03-30 |
-| Session Persistence & Auth | `.github/skills/session-persistence/skill.md` | SharedPreferences, login flow, session recovery, revocation handling | 2026-03-30 |
+| Session Persistence & Auth | `.github/skills/session-persistence/skill.md` | SharedPreferences, login flow, offline auto-login fix, session recovery, revocation handling | 2026-04-08 |
 | Offline Sync Worker | `.github/skills/offline-sync/skill.md` | WorkManager-based sync for profile and feedback when offline | 2026-04-03 |
 
 ## General Development Skills
@@ -102,9 +105,10 @@ If a skill references something that no longer exists, it should be updated or a
 
 ---
 
-**Last Registry Update:** 2026-03-30  
+**Last Registry Update:** 2026-04-09  
 **Registry Status:** ✅ Complete - All project-specific skills generated
 **Total Skills:** 12 (3 core + 9 project-specific)
+**Total Agent Prompts:** 8
 
 ### Skills Coverage
 ✅ Android Activities, Services, Broadcast Receivers
@@ -112,3 +116,16 @@ If a skill references something that no longer exists, it should be updated or a
 ✅ Critical paths: Emergency calls, Session persistence, Auth
 ✅ Testing: JUnit/Espresso (Android), Jest (Web)
 ✅ Agent prompts: Review, Fix, Test, New Feature, Scan, Update Skills
+
+---
+
+## Changelog
+
+### 2026-04-09
+- Supabase project migrated to new project URL: qzezwpzmxkwxgrtxucaw.supabase.co
+- Location system updated: 3-min refresh, first-capture on startup, offline fallback with age text
+- New Prefs methods: setLastSyncedLocation, hasAnySavedLocation, setFirstLocationCaptured
+- New SupabaseClient method: updateUserLocation(userId, lat, lng)
+- Emergency INSERT now stores contact numbers immediately
+- Connectivity check moved to BEFORE insert
+- Admin dashboard: admin login created on new Supabase project

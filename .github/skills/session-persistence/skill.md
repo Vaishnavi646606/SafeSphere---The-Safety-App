@@ -48,8 +48,8 @@ Handle user authentication, session persistence, and data survival across app cr
 "protection_enabled"  // Boolean: is protection on?
 
 // Revocation state
-"revocation_version"  // Current version from server
 "pending_revocation"  // Boolean: revoked by admin?
+"revocation_message"  // Message shown when account is revoked
 ```
 
 **Pattern for reading (from Prefs.java):**
@@ -62,7 +62,7 @@ public static boolean isLoggedIn(Context context) {
     return getPrefs(context).getBoolean("logged_in", false);
 }
 
-public static String getUserId(Context context) {
+public static String getSupabaseUserId(Context context) {
     return getPrefs(context).getString("user_id", "");
 }
 ```
@@ -90,7 +90,7 @@ public static void setName(Context context, String name) {
 ```
 1. User enters phone number
 2. POST to /api/user/register (Next.js backend)
-3. Receive user_id + revocation_version
+3. Receive user_id
 4. Store in SharedPreferences via Prefs.setLoggedIn(true)
 5. Start MainActivity
 6. MainActivity checks Prefs.isLoggedIn() — YES → show dashboard
@@ -136,12 +136,11 @@ public class LoginActivity extends AppCompatActivity {
                 
                 JSONObject json = new JSONObject(response);
                 String userId = json.getString("user_id");
-                int revVersion = json.getInt("revocation_version");
+                String userId = json.getString("user_id");
                 
                 // Save to SharedPreferences
                 Prefs.setLoggedIn(this, true);
-                Prefs.setUserId(this, userId);
-                Prefs.setRevocationVersion(this, revVersion);
+                Prefs.setSupabaseUserId(this, userId);
                 
                 // Navigate to MainActivity
                 runOnUiThread(() -> {
@@ -206,7 +205,7 @@ public class MainActivity extends AppCompatActivity {
         // Async task to check revocation status, get latest user data
         new Thread(() -> {
             try {
-                String userId = Prefs.getUserId(MainActivity.this);
+                String userId = Prefs.getSupabaseUserId(MainActivity.this);
                 String response = makeApiCall("/api/revocation/check?user_id=" + userId);
                 
                 JSONObject json = new JSONObject(response);
@@ -216,9 +215,8 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
                 
-                // Update UI if data changed
-                int newRevVersion = json.getInt("revocation_version");
-                Prefs.setRevocationVersion(MainActivity.this, newRevVersion);
+                // Update local pending revocation state
+                Prefs.setPendingRevocation(MainActivity.this, json.optBoolean("is_revoked", false));
                 
             } catch (Exception e) {
                 // Network error: OK, continue with cached data
@@ -251,7 +249,7 @@ public class AnalyticsEvent {
     @PrimaryKey
     public String eventId;          // UUID v4 per event
     
-    public String userId;           // Prefs.getUserId()
+    public String userId;           // Prefs.getSupabaseUserId()
     public String sessionId;        // Unique per emergency trigger
     public String eventType;        // "login", "trigger_source", "call_attempt"
     
@@ -272,7 +270,7 @@ Prefs.setCurrentSessionId(context, sessionId);
 // Log trigger event
 AnalyticsEvent event = new AnalyticsEvent();
 event.eventId = UUID.randomUUID().toString();
-event.userId = Prefs.getUserId(context);
+event.userId = Prefs.getSupabaseUserId(context);
 event.sessionId = sessionId;            // Links all events in this emergency
 event.eventType = "trigger_source";
 event.clientTsMs = System.currentTimeMillis();
@@ -286,7 +284,7 @@ database.analyticsEventDao().insert(event);
 
 ### Web Tier Auth (Next.js + Supabase)
 
-**Middleware protection:** [safesphere-admin/src/middleware.ts](safesphere-admin/src/middleware.ts)
+**Middleware protection:** [admin/src/middleware.ts](admin/src/middleware.ts)
 
 ```typescript
 import { createClient } from '@/lib/supabase/server';
@@ -372,8 +370,8 @@ export const config = {
 1. Check Prefs values:
    ```java
    Log.d("Session", "logged_in=" + Prefs.isLoggedIn(context));
-   Log.d("Session", "user_id=" + Prefs.getUserId(context));
-   Log.d("Session", "revocation_version=" + Prefs.getRevocationVersion(context));
+    Log.d("Session", "user_id=" + Prefs.getSupabaseUserId(context));
+    Log.d("Session", "pending_revocation=" + Prefs.isPendingRevocation(context));
    ```
 
 2. Check SharedPreferences file:
@@ -391,6 +389,13 @@ export const config = {
    - Look for `revocation_detected` event in `/admin/analytics`
 
 ## Changelog
+- 2026-04-09 - Supabase project migrated to new URL: qzezwpzmxkwxgrtxucaw.supabase.co
+- Admin account created on new project for dashboard login
+- All auth flows verified working on new project
+- 2026-04-08 - Updated for current SafeSphere structure and auth behavior
+- Replaced stale `safesphere-admin/` path with `admin/`
+- Replaced legacy `getUserId/setUserId` examples with `getSupabaseUserId/setSupabaseUserId`
+- Replaced outdated revocation version examples with `pending_revocation` flow
 - 2026-03-30 - Initial session persistence documentation
 - Documented SharedPreferences keys and Prefs.java patterns
 - Documented LoginActivity and session recovery flow

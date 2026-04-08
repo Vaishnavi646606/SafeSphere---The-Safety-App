@@ -268,17 +268,34 @@ public class EmergencyManager {
                     eventData.put("location_lat", storedLat);
                     eventData.put("location_lng", storedLng);
                 }
+                // Store emergency contact numbers at INSERT time
+                // so admin dashboard shows them immediately
+                // even before the call results PATCH arrives
+                String[] contactNums = Prefs.getEmergencyNumbers(ctx);
+                if (contactNums != null && contactNums.length >= 1
+                        && contactNums[0] != null
+                        && !contactNums[0].trim().isEmpty()) {
+                    eventData.put("primary_contact_called", contactNums[0].trim());
+                }
+                if (contactNums != null && contactNums.length >= 2
+                        && contactNums[1] != null
+                        && !contactNums[1].trim().isEmpty()) {
+                    eventData.put("secondary_contact_called", contactNums[1].trim());
+                }
+                if (contactNums != null && contactNums.length >= 3
+                        && contactNums[2] != null
+                        && !contactNums[2].trim().isEmpty()) {
+                    eventData.put("tertiary_contact_called", contactNums[2].trim());
+                }
 
-                SupabaseClient.SupabaseResponse response = client.insertRowReturningRepresentation("emergency_events", eventData);
-
-                // Check connectivity before insert
+                // Check connectivity BEFORE insert — not after
                 android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
                         ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
                 android.net.NetworkInfo ni = cm.getActiveNetworkInfo();
                 boolean isOnline = ni != null && ni.isConnected();
 
                 if (!isOnline) {
-                    // Offline — save event data locally for later sync
+                    // Offline — queue for later sync, do NOT attempt insert
                     Log.w(TAG, "Offline — queuing emergency event for later sync: " + emergencyEventId);
                     Prefs.setLastEmergencyEventId(ctx, emergencyEventId);
                     double lat = Prefs.getLastKnownLocationLat(ctx);
@@ -290,14 +307,15 @@ public class EmergencyManager {
                             isLocationEnabled(ctx));
                     SyncWorker.scheduleSyncWhenOnline(ctx);
                 } else {
-                    SupabaseClient.SupabaseResponse response2 =
+                    // Online — insert exactly once
+                    SupabaseClient.SupabaseResponse response =
                             client.insertRowReturningRepresentation("emergency_events", eventData);
-                    Log.d(TAG, "Emergency insert response: code=" + response2.statusCode
-                            + " success=" + response2.success);
-                    Log.d(TAG, "Emergency insert response body: " + response2.message);
-                    if (!response2.success) {
+                    Log.d(TAG, "Emergency insert response: code=" + response.statusCode
+                            + " success=" + response.success);
+                    Log.d(TAG, "Emergency insert response body: " + response.message);
+                    if (!response.success) {
                         // Online but insert failed — queue for retry
-                        Log.w(TAG, "Emergency insert failed, queuing for retry: " + response2.message);
+                        Log.w(TAG, "Emergency insert failed, queuing for retry: " + response.message);
                         Prefs.setLastEmergencyEventId(ctx, emergencyEventId);
                         double lat = Prefs.getLastKnownLocationLat(ctx);
                         double lng = Prefs.getLastKnownLocationLng(ctx);
@@ -308,7 +326,7 @@ public class EmergencyManager {
                                 isLocationEnabled(ctx));
                         SyncWorker.scheduleSyncWhenOnline(ctx);
                     } else {
-                        String actualEventId = parseInsertedEmergencyEventId(response2.message);
+                        String actualEventId = parseInsertedEmergencyEventId(response.message);
                         if (actualEventId != null && !actualEventId.trim().isEmpty()) {
                             Prefs.setLastEmergencyEventId(ctx, actualEventId);
                             Log.d(TAG, "Stored actual event ID: " + actualEventId);
@@ -411,64 +429,52 @@ public class EmergencyManager {
     // ================================================================
 
     private static void sendSmsWithBestLocation(Context ctx, String[] numbers) {
-        boolean hasFine   = ActivityCompat.checkSelfPermission(ctx,
-                Manifest.permission.ACCESS_FINE_LOCATION)   == PackageManager.PERMISSION_GRANTED;
+        boolean hasFine = ActivityCompat.checkSelfPermission(ctx,
+                Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
         boolean hasCoarse = ActivityCompat.checkSelfPermission(ctx,
-                Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+                Manifest.permission.ACCESS_COARSE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
 
-        if (!hasFine && !hasCoarse) {
-            String unavailable = locationUnavailableText("this person's location permission is denied on this device");
-            sendSmsToAll(ctx, numbers, buildMsg(unavailable, unavailable));
-            return;
-        }
+        String locationText;
 
-        LocationManager lm = (LocationManager) ctx.getSystemService(Context.LOCATION_SERVICE);
-        if (lm == null) {
-            String unavailable = locationUnavailableText("this person's location service is unavailable on this device");
-            sendSmsToAll(ctx, numbers, buildMsg(unavailable, unavailable));
-            return;
-        }
-
-        boolean gpsEnabled = false;
-        boolean networkEnabled = false;
-        try {
-            gpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER);
-        } catch (Exception ignored) {}
-        try {
-            networkEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
-        } catch (Exception ignored) {}
-
-        Location best = getBestCachedLocation(lm);
-
-        if (best != null) {
-            rememberLastKnownLocation(ctx, best);
-            long ageSeconds = (System.currentTimeMillis() - best.getTime()) / 1000;
-            Log.d(TAG, "Cached location: " + best.getLatitude() + ","
-                    + best.getLongitude() + " (age " + ageSeconds + "s)");
-            String link = mapsLink(best);
-            sendSmsToAll(ctx, numbers, buildMsg(link, link));
-        } else {
-            if (!gpsEnabled) {
-                String currentUnavailable = currentLocationGpsOffText();
-                String storedFallback = getStoredLastKnownLocationText(ctx);
-                if (storedFallback != null) {
-                    Log.d(TAG, "GPS is off - sending current-unavailable message with last updated location");
-                    sendSmsToAll(ctx, numbers, buildMsg(currentUnavailable, storedFallback));
-                } else {
-                    Log.d(TAG, "GPS is off and no stored location exists");
-                    sendSmsToAll(ctx, numbers,
-                            buildMsg(currentUnavailable, locationUnavailableText("last updated location is not available yet")));
+        if (hasFine || hasCoarse) {
+            try {
+                LocationManager lm = (LocationManager)
+                        ctx.getSystemService(Context.LOCATION_SERVICE);
+                if (lm != null) {
+                    Location best = getBestCachedLocation(lm);
+                    if (best != null) {
+                        rememberLastKnownLocation(ctx, best);
+                        String link = mapsLink(best);
+                        locationText = "📍 Current Location: " + link
+                                + "\n🔴 Live Location: " + link;
+                        sendSmsToAll(ctx, numbers, buildMsg(locationText, null));
+                        return;
+                    }
                 }
-                return;
-            }
-
-            String unavailable = locationUnavailableText(
-                    networkEnabled
-                            ? "this person's location could not be fetched right now"
-                            : "this person's location services are turned off right now");
-            Log.d(TAG, "No cached location with GPS on - sending unavailable-location message");
-            sendSmsToAll(ctx, numbers, buildMsg(unavailable, unavailable));
+            } catch (Exception ignored) {}
         }
+
+        // Fall back to stored location
+        double lat = Prefs.getLastKnownLocationLat(ctx);
+        double lng = Prefs.getLastKnownLocationLng(ctx);
+        if (!Double.isNaN(lat) && !Double.isNaN(lng)) {
+            long timeMs = Prefs.getLastKnownLocationTime(ctx);
+            String age = getLocationAgeText(timeMs);
+            String link = "https://maps.google.com/?q=" + lat + "," + lng;
+            locationText = "📍 Last Known Location (" + age + "): " + link
+                    + "\n🔴 Live Location: " + link;
+            Log.d(TAG, "SMS using stored location fallback");
+            sendSmsToAll(ctx, numbers, buildMsg(locationText, null));
+            return;
+        }
+
+        // No location at all
+        locationText = "⚠️ Location not available."
+                + " Please enable GPS on this device.";
+        Log.w(TAG, "No location available for SMS");
+        sendSmsToAll(ctx, numbers, buildMsg(locationText, null));
     }
 
     private static Location getBestCachedLocation(LocationManager lm) {
@@ -527,43 +533,57 @@ public class EmergencyManager {
     }
 
     public static String buildCurrentLocationLink(Context ctx) {
-        boolean hasFine   = ActivityCompat.checkSelfPermission(ctx,
-                Manifest.permission.ACCESS_FINE_LOCATION)   == PackageManager.PERMISSION_GRANTED;
+        // Step 1 - Try to get live location from device
+        boolean hasFine = ActivityCompat.checkSelfPermission(ctx,
+                Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
         boolean hasCoarse = ActivityCompat.checkSelfPermission(ctx,
-                Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-        if (!hasFine && !hasCoarse) return locationUnavailableText("this person's location permission is denied on this device");
+                Manifest.permission.ACCESS_COARSE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
 
-        LocationManager lm = (LocationManager) ctx.getSystemService(Context.LOCATION_SERVICE);
-        if (lm == null) return locationUnavailableText("this person's location service is unavailable on this device");
-        Location best = getBestCachedLocation(lm);
-        if (best != null) {
-            rememberLastKnownLocation(ctx, best);
-            return mapsLink(best);
+        if (hasFine || hasCoarse) {
+            try {
+                LocationManager lm = (LocationManager)
+                        ctx.getSystemService(Context.LOCATION_SERVICE);
+                if (lm != null) {
+                    Location best = getBestCachedLocation(lm);
+                    if (best != null) {
+                        rememberLastKnownLocation(ctx, best);
+                        return mapsLink(best);
+                    }
+                }
+            } catch (Exception ignored) {}
         }
 
-        boolean gpsEnabled = false;
-        boolean networkEnabled = false;
-        try {
-            gpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER);
-        } catch (Exception ignored) {}
-        try {
-            networkEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
-        } catch (Exception ignored) {}
-
-        if (!gpsEnabled) {
-            String storedFallback = getStoredLastKnownLocationText(ctx);
-            if (storedFallback != null) {
-                return currentLocationGpsOffText() + " " + storedFallback;
-            }
-            return locationUnavailableText("current location is not available because GPS is turned off and no last updated location is saved");
+        // Step 2 - Fall back to last known location stored in Prefs
+        double lat = Prefs.getLastKnownLocationLat(ctx);
+        double lng = Prefs.getLastKnownLocationLng(ctx);
+        if (!Double.isNaN(lat) && !Double.isNaN(lng)) {
+            long timeMs = Prefs.getLastKnownLocationTime(ctx);
+            String age = getLocationAgeText(timeMs);
+            Log.d(TAG, "Using stored location fallback: " + lat + "," + lng);
+            return "https://maps.google.com/?q=" + lat + "," + lng
+                    + " (last updated " + age + ")";
         }
 
-        return locationUnavailableText(networkEnabled
-                ? "this person's location could not be fetched right now"
-                : "this person's location services are turned off right now");
+        // Step 3 - Absolutely nothing available
+        return "Location not available yet - please enable GPS and try again";
     }
 
-    public static String buildLiveLocationLink(Context ctx) { return buildCurrentLocationLink(ctx); }
+    private static String getLocationAgeText(long timestampMs) {
+        if (timestampMs <= 0) return "unknown time ago";
+        long diffMs = System.currentTimeMillis() - timestampMs;
+        long diffMin = diffMs / 60000;
+        if (diffMin < 1) return "just now";
+        if (diffMin < 60) return diffMin + " min ago";
+        long diffHr = diffMin / 60;
+        if (diffHr < 24) return diffHr + " hr ago";
+        return (diffHr / 24) + " day(s) ago";
+    }
+
+    public static String buildLiveLocationLink(Context ctx) {
+        return buildCurrentLocationLink(ctx);
+    }
     public static String buildLocationText(Context ctx)     { return buildCurrentLocationLink(ctx); }
 
     private static String mapsLink(Location loc) {

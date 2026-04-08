@@ -371,6 +371,29 @@ public class SupabaseClient {
         }
     }
 
+    public void updateUserLocation(String userId, double lat, double lng) {
+        new Thread(() -> {
+            try {
+                org.json.JSONObject patch = new org.json.JSONObject();
+                patch.put("last_known_lat", lat);
+                patch.put("last_known_lng", lng);
+                patch.put("last_location_updated_at",
+                        toIso8601(System.currentTimeMillis()));
+                patch.put("updated_at",
+                        toIso8601(System.currentTimeMillis()));
+                SupabaseResponse response =
+                        updateRow("users", "id", userId, patch);
+                if (response.success) {
+                    Log.d(TAG, "updateUserLocation: synced to Supabase");
+                } else {
+                    Log.w(TAG, "updateUserLocation: failed - " + response.message);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "updateUserLocation exception", e);
+            }
+        }, "location-sync").start();
+    }
+
     private String nowIsoUtc() {
         return toIso8601(System.currentTimeMillis());
     }

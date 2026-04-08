@@ -587,4 +587,43 @@ public class Prefs {
         return getFeedbackQueue(ctx).length() == 0;
     }
 
+    // -- Last location synced to Supabase ---------------------------------
+    public static void setLastSyncedLocation(Context ctx,
+            double lat, double lng, long timestampMs) {
+        getAll(ctx).edit()
+                .putString("last_synced_location_lat", Double.toString(lat))
+                .putString("last_synced_location_lng", Double.toString(lng))
+                .putLong("last_synced_location_time_ms", timestampMs)
+                .apply();
+    }
+
+    public static double getLastSyncedLocationLat(Context ctx) {
+        try {
+            return Double.parseDouble(
+                    getAll(ctx).getString("last_synced_location_lat", "NaN"));
+        } catch (Exception ignored) { return Double.NaN; }
+    }
+
+    public static double getLastSyncedLocationLng(Context ctx) {
+        try {
+            return Double.parseDouble(
+                    getAll(ctx).getString("last_synced_location_lng", "NaN"));
+        } catch (Exception ignored) { return Double.NaN; }
+    }
+
+    public static boolean hasAnySavedLocation(Context ctx) {
+        double lat = getLastKnownLocationLat(ctx);
+        double lng = getLastKnownLocationLng(ctx);
+        return !Double.isNaN(lat) && !Double.isNaN(lng);
+    }
+
+    public static void setFirstLocationCaptured(Context ctx, boolean captured) {
+        getAll(ctx).edit()
+                .putBoolean("first_location_captured", captured).apply();
+    }
+
+    public static boolean isFirstLocationCaptured(Context ctx) {
+        return getAll(ctx).getBoolean("first_location_captured", false);
+    }
+
 }

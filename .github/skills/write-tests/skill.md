@@ -158,7 +158,7 @@ public void testContactSequenceAdvances() {
 ## Web Testing
 
 ### Jest Unit Tests
-**Location:** `safesphere-admin/src/` or `__tests__/`
+**Location:** `admin/src/` or `__tests__/`
 
 ```typescript
 describe('User Registration', () => {
@@ -185,7 +185,7 @@ describe('User Registration', () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.user_id).toBeDefined();
-    expect(data.revocation_version).toBe(0);
+    expect(data.is_active).toBe(true);
   });
 });
 

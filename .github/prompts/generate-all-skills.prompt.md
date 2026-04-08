@@ -49,7 +49,7 @@ Based on what you find, generate skills for:
 - **android-database-persistence**: How to implement persistence in Android following existing patterns
 - **android-testing**: How to write tests for Android code
 - **web-testing**: How to write tests for Next.js code
-- **emergency-call-handling**: Special skill for emergency call system (critical area)
+- **emergency-call-system**: Special skill for emergency call system (critical area)
 - **session-persistence**: Special skill for session management (critical area)
 - **keyword-detection**: Special skill for keyword detection logic
 

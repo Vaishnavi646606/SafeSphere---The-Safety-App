@@ -53,13 +53,13 @@ Automatically scan the entire SafeSphere codebase to identify architecture, patt
 
 ### Phase 2: Web Codebase Scan
 
-1. **Check Web Root** (`safesphere-admin/`)
+1. **Check Web Root** (`admin/`)
    - Package.json contents (all dependencies and their versions)
    - Next.js configuration (next.config.ts)
    - TypeScript configuration (tsconfig.json)
    - Environment variable examples
    
-2. **Scan Source Structure** (`safesphere-admin/src/`)
+2. **Scan Source Structure** (`admin/src/`)
    - List all pages in `app/`
    - List all API routes in `app/api/`
    - Find all React components

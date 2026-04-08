@@ -87,6 +87,12 @@ Emergency feedback (EmergencyFeedbackActivity.submitFeedback):
 
 ## Changelog
 
+### 2026-04-09
+- Connectivity check now happens BEFORE emergency event insert
+- If offline: queue immediately, do NOT attempt insert
+- Contact numbers (primary/secondary/tertiary) stored at INSERT time
+- Ensures admin dashboard sees contact numbers before call results PATCH
+
 ### 2026-04-03 (Latest)
 - **Replaced single-key offline queues with JSON array queues**
 - Emergency events: `enqueueEmergencyEvent()` / `getEmergencyEventQueue()` / `removeEmergencyEventFromQueue()`
@@ -113,6 +119,20 @@ Emergency feedback (EmergencyFeedbackActivity.submitFeedback):
 - Table and column names verified against VERIFIED SCHEMA in copilot-instructions.md
 
 ## Changelog
+- ## 2026-04-03
+- Location system overhaul
+- Background location refresh changed from 5 min to 3 min
+- First location captured on first app startup automatically
+- Location always saved locally first (Prefs)
+- Location synced to Supabase users table when online
+  (last_known_lat, last_known_lng, last_location_updated_at)
+- SMS now always sends location - falls back to stored if GPS off
+- Share location offline fixed - no longer causes logout
+- buildCurrentLocationLink() falls back to stored location
+- sendSmsWithBestLocation() falls back to stored location
+- New Prefs methods: setLastSyncedLocation, hasAnySavedLocation,
+  setFirstLocationCaptured, isFirstLocationCaptured
+- New SupabaseClient method: updateUserLocation()
 - 2026-04-03 - Initial creation
 - WorkManager pattern for offline profile and feedback sync
 - Survives app kill, retries on failure

@@ -344,6 +344,11 @@ for (String contact : contacts) {
 - **Network**: timeouts set to 15s (NetworkConfig.java)
 
 ## Changelog
+- 2026-04-09 - SMS location now shows age: "Last Known Location (5 min ago): [link]"
+- getLocationAgeText() helper added to EmergencyManager
+- sendSmsWithBestLocation() simplified: live GPS → stored with age → unavailable
+- buildCurrentLocationLink() uses same 3-step pattern
+- Contact numbers stored immediately at INSERT time in emergency_events
 - 2026-03-30 - Initial emergency flow documentation
 - Documented trigger scoring (keyword +5, shake +3, location +2)
 - Documented contact sequence and PhoneStateReceiver state machine

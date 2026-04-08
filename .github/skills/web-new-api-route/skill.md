@@ -10,10 +10,10 @@ Create a new Next.js API route for SafeSphere admin dashboard following exact pr
 - Adding authentication-protected admin operations
 
 ## Prerequisites
-- SafeSphere Next.js project (`safesphere-admin/`)
+- SafeSphere Next.js project (`admin/`)
 - TypeScript understanding (strict mode enabled)
 - Supabase client libraries available
-- Route file at `safesphere-admin/src/app/api/[route]/route.ts`
+- Route file at `admin/src/app/api/[route]/route.ts`
 
 ## Steps
 
@@ -24,7 +24,7 @@ Identify if route is:
 - **Method:** GET, POST, PUT, DELETE
 
 ### Step 2: Create Route File
-**Location:** `safesphere-admin/src/app/api/[path]/route.ts`
+**Location:** `admin/src/app/api/[path]/route.ts`
 
 **Basic Pattern (from existing routes):**
 ```typescript
@@ -51,13 +51,13 @@ export async function POST(request: NextRequest) {
       .from('users')
       .upsert(
         {
-          name,
+          display_name: name,
           phone_hash: hashPhone(phone),
-          masked_phone: maskPhone(phone),
+          is_active: true,
         },
         { onConflict: 'phone_hash' }
       )
-      .select('id, revocation_version')
+      .select('id, is_active')
       .single();
     
     if (error) {
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({
       user_id: data.id,
-      revocation_version: data.revocation_version,
+      is_active: data.is_active,
     });
     
   } catch (error) {
@@ -137,8 +137,7 @@ export async function POST(request: NextRequest) {
 ```typescript
 const { data: users, error } = await supabase
   .from('users')
-  .select('id, is_active, revoked_at')
-  .is('revoked_at', null);  // NULL check pattern
+  .select('id, is_active');
 
 const totalUsers = users?.length || 0;
 const activeUsers = users?.filter(u => u.is_active)?.length || 0;
@@ -166,29 +165,18 @@ await supabase
   .from('users')
   .update({
     is_active: false,
-    revoked_at: new Date().toISOString(),
-    revocation_reason: reason,
+    updated_at: new Date().toISOString(),
   })
   .eq('id', userId);
 
-// 2. Increment revocation version
+// 2. Log to audit
 await supabase
-  .from('revocation_tokens')
-  .upsert({
-    user_id: userId,
-    revocation_version: currentVersion + 1,
-    last_checked_at: new Date().toISOString(),
-  });
-
-// 3. Log to audit
-await supabase
-  .from('admin_actions')
+  .from('audit_logs')
   .insert({
     admin_id: adminId,
     action: 'remove_user',
-    resource_type: 'user',
-    resource_id: userId,
-    timestamp: new Date().toISOString(),
+    target_user_id: userId,
+    details: { reason },
   });
 ```
 
@@ -258,7 +246,7 @@ try {
 ```
 
 ### Step 7: Register in Route Structure
-**Location verified:** `safesphere-admin/src/app/api/[path]/route.ts`
+**Location verified:** `admin/src/app/api/[path]/route.ts`
 
 **Confirmed routes structure from codebase:**
 - `src/app/api/user/register/route.ts` ✅
@@ -269,7 +257,7 @@ try {
 - And 5 more admin routes...
 
 ## Verification
-- [ ] TypeScript file created at `safesphere-admin/src/app/api/[path]/route.ts`
+- [ ] TypeScript file created at `admin/src/app/api/[path]/route.ts`
 - [ ] Exports `POST`, `GET`, or other HTTP method function
 - [ ] Properly typed with NextRequest → NextResponse
 - [ ] Supabase client created with `createServiceClient()` (backend) or auth client
@@ -283,9 +271,9 @@ try {
 - [ ] API endpoint callable via `fetch()` from frontend or Android
 
 ## Anti-Hallucination Checks
-- [ ] Supabase tables exist: `users`, `admin_accounts`, `analytics_events`, `incidents`, etc.
+- [ ] Supabase tables exist: `users`, `admin_accounts`, `emergency_events`, `audit_logs`, etc.
 - [ ] Supabase functions match actual SDK (createServiceClient, createClient imported from real paths)
-- [ ] Column names match database schema (phone_hash, revoked_at, is_active, etc.)
+- [ ] Column names match database schema (phone_hash, display_name, is_active, etc.)
 - [ ] NextResponse/NextRequest from 'next/server' is standard Next.js
 - [ ] Error messages and status codes are HTTP standard
 - [ ] All referenced tables verified to exist in Supabase schema
@@ -318,23 +306,22 @@ export async function POST(request: NextRequest) {
     
     const supabase = await createServiceClient();
     const phoneHash = hashPhone(phone);
-    const maskedPhone = phone.slice(0, 3) + 'XXXX' + phone.slice(-2);
     
     const { data, error } = await supabase
       .from('users')
       .upsert({
-        name,
+        display_name: name,
         phone_hash: phoneHash,
-        masked_phone: maskedPhone,
+        is_active: true,
       }, { onConflict: 'phone_hash' })
-      .select('id, revocation_version')
+      .select('id, is_active')
       .single();
     
     if (error) throw error;
     
     return NextResponse.json({
       user_id: data.id,
-      revocation_version: data.revocation_version || 0,
+      is_active: data.is_active,
     });
   } catch (error) {
     console.error('Register error:', error);
@@ -381,8 +368,7 @@ export async function GET(request: NextRequest) {
     const { data: activeUsers } = await supabase
       .from('users')
       .select('id')
-      .eq('is_active', true)
-      .is('revoked_at', null);
+      .eq('is_active', true);
     
     return NextResponse.json({
       total_users: totalUsers?.length || 0,
@@ -411,41 +397,23 @@ export async function POST(request: NextRequest) {
     
     const supabase = await createServiceClient();
     
-    // Get current revocation version
-    const { data: current } = await supabase
-      .from('revocation_tokens')
-      .select('revocation_version')
-      .eq('user_id', user_id)
-      .single();
-    
-    const nextVersion = (current?.revocation_version || 0) + 1;
-    
     // Update user
     await supabase
       .from('users')
       .update({
         is_active: false,
-        revoked_at: new Date().toISOString(),
-        revocation_reason: reason,
+        updated_at: new Date().toISOString(),
       })
       .eq('id', user_id);
     
-    // Update revocation version
-    await supabase
-      .from('revocation_tokens')
-      .upsert({
-        user_id,
-        revocation_version: nextVersion,
-      });
-    
     // Audit log
     await supabase
-      .from('admin_actions')
+      .from('audit_logs')
       .insert({
         admin_id: user.id,
         action: 'remove_user',
-        resource_type: 'user',
-        resource_id: user_id,
+        target_user_id: user_id,
+        details: { reason },
       });
     
     return NextResponse.json({ success: true });

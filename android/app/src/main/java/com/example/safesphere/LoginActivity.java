@@ -52,11 +52,45 @@ public class LoginActivity extends AppCompatActivity {
     private void attemptAutoLogin(String savedPhone) {
         new Thread(() -> {
             try {
+                // -- Check connectivity FIRST -- never make network call when offline --
+                android.net.ConnectivityManager cm =
+                        (android.net.ConnectivityManager)
+                        getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+                android.net.NetworkInfo ni =
+                        cm != null ? cm.getActiveNetworkInfo() : null;
+                boolean isOnline = ni != null && ni.isConnected();
+
+                // -- OFFLINE: already logged in -> use cached credentials ---------
+                if (!isOnline) {
+                    String cachedUserId = Prefs.getSupabaseUserId(getApplicationContext());
+                    boolean hasCache = cachedUserId != null && !cachedUserId.trim().isEmpty();
+                    if (hasCache) {
+                        android.util.Log.d("SafeSphere_LOGIN",
+                                "Offline auto-login: using cached credentials, userId=" + cachedUserId);
+                        runOnUiThread(this::goToMain);
+                    } else {
+                        // No cached userId -- cannot verify who this is offline
+                        // Show login screen but do NOT call setLoggedIn(false)
+                        android.util.Log.w("SafeSphere_LOGIN",
+                                "Offline and no cached userId -- showing login screen without logout");
+                        runOnUiThread(() -> {
+                            setContentView(R.layout.activity_login);
+                            initViews();
+                            Toast.makeText(LoginActivity.this,
+                                    "No internet connection. Please connect to continue.",
+                                    Toast.LENGTH_LONG).show();
+                        });
+                    }
+                    return;
+                }
+
+                // -- ONLINE: verify credentials with Supabase --------------------
                 SupabaseClient client = SupabaseClient.getInstance(getApplicationContext());
                 JSONObject user = client.getUserProfileByPhone(savedPhone);
                 String userId = user != null ? user.optString("id", "") : "";
 
                 if (user != null && userId != null && !userId.trim().isEmpty()) {
+                    // Account confirmed online -- refresh all cached data
                     String displayName = user.optString("display_name", "");
                     String keyword = user.optString("keyword", "");
                     String e1 = user.optString("emergency_contact_1", "");
@@ -82,7 +116,6 @@ public class LoginActivity extends AppCompatActivity {
                     Prefs.setUserPhone(getApplicationContext(), savedPhone);
                     Prefs.setLoggedIn(getApplicationContext(), true);
 
-                    // Check if profile setup is needed
                     if (keyword.isEmpty() || e1.isEmpty()) {
                         Prefs.setNeedsProfileSetup(getApplicationContext(), true);
                     }
@@ -95,18 +128,28 @@ public class LoginActivity extends AppCompatActivity {
                     return;
                 }
 
+                // -- Online but account not found -> truly gone from Supabase ----
+                // ONLY here do we call setLoggedIn(false)
                 Prefs.setLoggedIn(getApplicationContext(), false);
                 Prefs.setSupabaseUserId(getApplicationContext(), null);
                 runOnUiThread(() -> {
                     setContentView(R.layout.activity_login);
                     initViews();
-                    Toast.makeText(LoginActivity.this, "Session expired. Please login again.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(LoginActivity.this,
+                            "Account not found. Please register again.",
+                            Toast.LENGTH_LONG).show();
                 });
+
             } catch (Exception e) {
-                android.util.Log.w("SafeSphere_LOGIN", "Auto-login failed", e);
+                // Network exception -- do NOT log out
+                // Just show login screen so user can retry
+                android.util.Log.w("SafeSphere_LOGIN", "Auto-login network error", e);
                 runOnUiThread(() -> {
                     setContentView(R.layout.activity_login);
                     initViews();
+                    Toast.makeText(LoginActivity.this,
+                            "Connection error. Please check your internet and try again.",
+                            Toast.LENGTH_LONG).show();
                 });
             }
         }).start();

@@ -27,7 +27,7 @@ git diff --staged
 
 ### Step 2: Categorize Changes
 - [ ] Android code (Java/Kotlin in `app/src/main/java`)
-- [ ] Web code (TypeScript/Tsx in `safesphere-admin/src`)
+- [ ] Web code (TypeScript/Tsx in `admin/src`)
 - [ ] Configuration files
 - [ ] Database migrations
 - [ ] Test files
@@ -76,7 +76,7 @@ For EVERY file reference:
 - [ ] If importing: Does this class/function actually exist in that file?
 - [ ] If calling API: Does this Supabase function/table actually exist?
 - [ ] If using Android lib: Is it in `app/build.gradle` dependencies?
-- [ ] If using npm lib: Is it in `safesphere-admin/package.json`?
+- [ ] If using npm lib: Is it in `admin/package.json`?
 
 ### Step 5: Convention Compliance
 
@@ -208,7 +208,7 @@ After completing all steps:
 - Are there proper tests?
 
 ### Example 2: Web Supabase Integration
-**Files Changed:** `safesphere-admin/src/app/api/incidents/route.ts`
+**Files Changed:** `admin/src/app/api/incidents/route.ts`
 
 **The Review Would Check:**
 - Does this API file exist?

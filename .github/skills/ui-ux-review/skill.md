@@ -48,4 +48,4 @@ auth state mismatches, responsive design, and user flow errors.
 - [ ] Color classes are valid Tailwind classes
 
 ## Changelog
-- Initial creation - Login page sidebar fix
+- 2026-04-08 - Initial creation - Login page sidebar fix

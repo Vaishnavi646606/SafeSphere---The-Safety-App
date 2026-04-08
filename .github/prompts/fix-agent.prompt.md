@@ -66,7 +66,7 @@ If issue: "EmergencyCallHandler doesn't unregister broadcast listener"
 
 ### Web API Fix Example
 If issue: "incidents/route.ts doesn't validate input"
-- Find: `safesphere-admin/src/app/api/incidents/route.ts`
+- Find: `admin/src/app/api/incidents/route.ts`
 - Add: Input validation for request body
 - Test: Add test for invalid inputs
 - Verify: Other routes use similar validation

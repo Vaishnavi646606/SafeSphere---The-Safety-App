@@ -148,7 +148,7 @@ admin/src/lib/supabase/
 
 ## SUPABASE SCHEMA — VERIFIED REAL COLUMNS ONLY
 
-Supabase Project URL: https://geyjrugnxhmtcwwuuiab.supabase.co
+Supabase Project URL: https://qzezwpzmxkwxgrtxucaw.supabase.co
 
 ### TABLE: users
 id (uuid)
@@ -267,6 +267,8 @@ revoked_at
 email (in users table)
 revocation_version
 revocation_reason
+revocation_message
+revoked_by
 revocation_tokens (table does not exist)
 incidents (table does not exist — use emergency_events)
 admin_actions (table does not exist — use audit_logs)
@@ -306,6 +308,9 @@ Emergency session:
 
 Location:
   setLastKnownLocation / getLastKnownLocationLat / getLastKnownLocationLng
+  setLastSyncedLocation / getLastSyncedLocationLat / getLastSyncedLocationLng
+  hasAnySavedLocation
+  setFirstLocationCaptured / isFirstLocationCaptured
 
 Offline sync queues (JSON array — supports multiple):
   Emergency events:
@@ -352,6 +357,7 @@ updateEmergencyEventResults(String eventId, JSONObject updates) → SupabaseResp
 incrementTotalEmergencies(String userId) → void
 toIso8601(long millis) → String   ← ALWAYS use this for timestamps
 submitEmergencyFeedback(EmergencyFeedbackData) → SupabaseResponse
+updateUserLocation(String userId, double lat, double lng) → void
 
 ---
 
@@ -416,6 +422,44 @@ SyncWorker (android/app/src/main/java/com/example/safesphere/SyncWorker.java):
 Emergency events:
   Calls and SMS work offline always (no internet needed)
   Supabase insert may fail offline but emergency still completes
+
+---
+
+## LOCATION SYSTEM — VERIFIED APRIL 2026
+
+How location works:
+  1. First location captured automatically on first app startup
+     captureFirstLocationOnStartup() called from SafeSphereService.onCreate()
+
+  2. Background refresh every 3 minutes when protection ON
+     BG_LOCATION_REFRESH_MS = 3 * 60 * 1000L
+     requestSingleBackgroundLocationUpdate() called by backgroundLocationRefreshRunnable
+
+  3. Every refresh:
+     - Always saves to Prefs (local) first via setLastKnownLocation()
+     - Marks first location captured: setFirstLocationCaptured(true)
+     - Checks online status BEFORE any Supabase call
+     - If online → syncs to Supabase via updateUserLocation(userId, lat, lng)
+       Updates: last_known_lat, last_known_lng, last_location_updated_at
+     - If offline → saved locally only, synced when online again
+
+  4. Emergency SMS always sends location:
+     - Step 1: Try live GPS location from device
+     - Step 2: Fall back to stored Prefs location with age text
+       Shows: "Last Known Location (5 min ago): [link]"
+     - Step 3: If nothing available → "Location not available"
+     - getLocationAgeText(timestampMs) helper:
+       Returns: "just now", "5 min ago", "2 hr ago", "3 day(s) ago"
+
+  5. Emergency event INSERT:
+     - Contact numbers stored at INSERT time immediately
+       (primary_contact_called, secondary_contact_called, tertiary_contact_called)
+     - Admin dashboard sees them immediately before call results PATCH arrives
+
+  6. Connectivity check:
+     - Checked BEFORE insert — not after
+     - If offline: queue for sync, do NOT attempt insert
+     - If online: insert exactly once
 
 ---
 
@@ -506,6 +550,15 @@ All previous issues resolved:
 Android:
   Login/register with Supabase verification
   Auto-login on app restart
+  ✅ Location captured on first login automatically
+  ✅ Location refreshed every 3 min (was 5 min) when protection ON
+  ✅ Location saved locally always (Prefs) — setLastKnownLocation + setLastSyncedLocation
+  ✅ Location synced to Supabase every 3 min when online — updateUserLocation()
+  ✅ Location offline fallback — shows age of stored location in SMS
+  ✅ Location age shown in SMS: "Last Known Location (5 min ago)"
+  ✅ Emergency contact numbers stored at INSERT time for instant dashboard visibility
+  ✅ Share location works offline — no logout bug
+  ✅ Share location uses stored location when GPS off
   Emergency flow: shake/keyword/manual trigger
   3-contact call sequence with fallback
   SMS to all contacts with location
@@ -536,3 +589,10 @@ Admin Dashboard:
   Feedback: user feedback list
   Saved verifications: admin-verified rescues
   Audit: admin action log
+
+---
+
+## CUSTOMIZATION MAINTENANCE
+
+- Customization docs and skills must use the real web app root path: `admin/` (not `safesphere-admin/`).
+- Keep `.github/skills/REGISTRY.md` in sync with the actual prompts and skills present in `.github/`.

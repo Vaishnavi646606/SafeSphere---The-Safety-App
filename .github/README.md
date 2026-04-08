@@ -29,7 +29,7 @@ Verify no hallucinations - only real files/patterns
 |---|---|
 | **Review your changes** | `@workspace /review-agent` |
 | **Add new Android Activity** | `@workspace /android-new-activity` (after skills generated) |
-| **Add new Web page** | `@workspace /web-new-page` (after skills generated) |
+| **Add new Web page/component** | `@workspace /web-new-component` |
 | **Generate tests** | `@workspace /test-agent` |
 | **Fix code issues** | `@workspace /fix-agent` |
 | **Update a skill** | Say: "Update the [X] skill to also include..." |
@@ -55,8 +55,8 @@ Verify no hallucinations - only real files/patterns
 ### Generated Skills (Created by Master Scan)
 After running the master scan, you'll have:
 - `.github/skills/android-new-activity/`
-- `.github/skills/web-new-page/`
-- `.github/skills/emergency-call-handling/`
+- `.github/skills/web-new-component/`
+- `.github/skills/emergency-call-system/`
 - `.github/skills/session-persistence/`
 - ... (many more)
 
@@ -82,11 +82,11 @@ When you type:
 ### Step 3: Auto-Update on Instruction
 When you say:
 ```
-"Update the emergency-call-handling skill to add network timeout handling"
+"Update the emergency-call-system skill to add network timeout handling"
 ```
 
 The system:
-1. Finds `.github/skills/emergency-call-handling/skill.md`
+1. Finds `.github/skills/emergency-call-system/skill.md`
 2. Adds your instruction to Steps section
 3. Appends changelog entry
 4. Confirms changes to you
@@ -125,8 +125,9 @@ Safety Check: ✅ PASS (if code-related)
 
 ### Add New Feature
 - Follow the appropriate skill:
-  - `/android-new-feature` (after generated)
-  - `/web-new-feature` (after generated)
+   - `/android-new-activity`
+   - `/web-new-component`
+   - `/web-new-api-route`
   - Or ask: "Create a skill for how to [do something] in this project"
 
 ### Update Skill
@@ -158,10 +159,10 @@ Safety Check: ✅ PASS (if code-related)
 
 Special care for emergency-related code:
 
-- Emergency call handling (`emergency-call-handling` skill)
+- Emergency call handling (`emergency-call-system` skill)
 - Session persistence (`session-persistence` skill)  
 - Phone state listeners (`app/src/main/.../PhoneStateListener.java`)
-- Authentication flows (`safesphere-admin/src/app/api/auth/`)
+- Authentication flows (`admin/src/app/api/user/register/route.ts`, `admin/src/app/api/revocation/check/route.ts`)
 
 These have extra review requirements and must include:
 - ✅ Comprehensive error handling
@@ -243,12 +244,13 @@ These will be documented automatically:
 
 ## Status
 
-- ✅ Core system created and ready
-- ⏳ Awaiting first master scan to generate project-specific skills
-- 📋 Skills will auto-update as instructions given
+- ✅ Core system created and in active use
+- ✅ Project-specific skills and prompts are present
+- ✅ Registry aligned to current folder structure
+- 📋 Skills auto-update as instructions evolve
 
 **Setup Date:** 2026-03-30  
-**System Status:** Ready for master scan
+**System Status:** Active and maintained
 
 ---
 

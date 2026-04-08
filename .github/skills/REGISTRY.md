@@ -6,7 +6,6 @@ This registry tracks all available skills and agents for SafeSphere development.
 
 | Skill Name | Path | Description | Type | Last Updated |
 |------------|------|-------------|------|--------------|
-| Auto-Update Skills | `.github/skills/skill-updater/skill.md` | Auto-updates skills based on new instructions | Core | 2026-03-30 |
 | Code Review | `.github/skills/code-review/skill.md` | Comprehensive code review process | Core | 2026-03-30 |
 | Auto-Scan | `.github/skills/auto-scan/skill.md` | Scan codebase and document patterns | Core | 2026-03-30 |
 
@@ -14,7 +13,6 @@ This registry tracks all available skills and agents for SafeSphere development.
 
 | Agent Name | Path | Description | Type | Last Updated |
 |------------|------|-------------|------|--------------|
-| Generate All Skills | `.github/prompts/generate-all-skills.prompt.md` | Master scanner and skill generator | Agent | 2026-03-30 |
 | Review Agent | `.github/prompts/review-agent.prompt.md` | Automated code review | Agent | 2026-03-30 |
 | Fix Agent | `.github/prompts/fix-agent.prompt.md` | Apply fixes to code issues | Agent | 2026-03-30 |
 | Test Agent | `.github/prompts/test-agent.prompt.md` | Generate tests for code | Agent | 2026-03-30 |
@@ -107,8 +105,8 @@ If a skill references something that no longer exists, it should be updated or a
 
 **Last Registry Update:** 2026-04-09  
 **Registry Status:** ✅ Complete - All project-specific skills generated
-**Total Skills:** 12 (3 core + 9 project-specific)
-**Total Agent Prompts:** 8
+**Total Skills:** 11 (2 core + 9 project-specific)
+**Total Agent Prompts:** 7
 
 ### Skills Coverage
 ✅ Android Activities, Services, Broadcast Receivers
@@ -120,6 +118,16 @@ If a skill references something that no longer exists, it should be updated or a
 ---
 
 ## Changelog
+
+### 2026-04-09 — System Optimization
+- Deleted: skill-updater/skill.md (unused)
+- Deleted: generate-all-skills.prompt.md (one-time use, done)
+- Deleted: README.md (unused)
+- Created: SESSION_STATE.md (cross-session memory — 25 lines max)
+- Shrunk: copilot-instructions.md from 21KB to ~8KB
+- Added: QUICK REF block to top of all 11 skill files
+- Updated: All 7 agent prompts to read SESSION_STATE.md first
+- Result: ~60% token reduction per session
 
 ### 2026-04-09
 - Supabase project migrated to new project URL: qzezwpzmxkwxgrtxucaw.supabase.co

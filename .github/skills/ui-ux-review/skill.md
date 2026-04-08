@@ -1,3 +1,9 @@
+# QUICK REF — UI/UX Review
+# Read full skill only when doing UI review
+
+When to use: explicit UI review request only
+Last change: 2026-03-30
+
 # Skill: UI/UX Review
 
 ## Description

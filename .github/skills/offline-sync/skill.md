@@ -1,3 +1,22 @@
+# QUICK REF — Offline Sync
+# Read only this block unless implementing changes
+
+When to use this skill:
+  - Changing sync order or queue logic
+  - Adding new sync type
+  - Debugging offline → online sync
+
+Key files: SyncWorker.java, Prefs.java
+
+Sync order: Event INSERT → Call PATCH → Profile → Feedback
+Queues: JSON arrays → supports multiple offline emergencies
+Trigger: WorkManager NetworkType.CONNECTED — auto retries
+
+Key rule: Check connectivity BEFORE insert — queue immediately if offline
+Contact numbers stored at INSERT time (not just PATCH)
+
+Last change: 2026-04-09 — connectivity check before insert
+
 # Skill: Offline Sync — WorkManager Pattern
 
 ## Description

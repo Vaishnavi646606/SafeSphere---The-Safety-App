@@ -1,3 +1,25 @@
+# QUICK REF — Emergency Call System
+# Read only this block unless implementing changes
+
+When to use this skill:
+    - Changing emergency trigger logic
+    - Changing call sequence / SMS / feedback flow
+    - Adding new trigger types
+
+Key files: EmergencyManager.java, SafeSphereService.java,
+                     PhoneStateReceiver.java, EmergencyFeedbackActivity.java
+
+Key methods:
+    triggerEmergencyWithSource(ctx, "SHAKE"|"KEYWORD"|"MANUAL")
+    sendSmsWithBestLocation() → live GPS → stored fallback → unavailable
+    getLocationAgeText(timestampMs) → age string
+    notifySequenceComplete()
+
+Flow: trigger → INSERT → calls → SMS → PATCH → feedback
+Offline: check connectivity FIRST → queue if offline
+
+Last change: 2026-04-09 — SMS shows location age, contact numbers at INSERT
+
 # Skill: Emergency Call System
 
 ## Description

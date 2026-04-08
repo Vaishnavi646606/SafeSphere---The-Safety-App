@@ -1,3 +1,19 @@
+# QUICK REF — Android New Activity
+# Read only this block unless implementing changes
+
+When to use this skill:
+    - Adding a new screen/activity to Android app
+    - Adding new UI flow
+
+Key rules:
+    Java only (never Kotlin)
+    Register in AndroidManifest.xml
+    Use bg_form_primary_button drawable for buttons
+    Button loading pattern: setEnabled + setText + setBackgroundTintList
+    Background tasks: always use new Thread() with try-catch
+
+Last change: 2026-04-08
+
 # Skill: Create Android Activity
 
 ## Description

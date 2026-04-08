@@ -1,3 +1,9 @@
+# QUICK REF — Auto Scan
+# Read full skill only when doing full codebase scan
+
+When to use: explicit scan request only
+Last change: 2026-03-30
+
 # Skill: Auto-Scan SafeSphere Codebase
 
 ## Description

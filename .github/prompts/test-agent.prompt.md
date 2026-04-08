@@ -1,4 +1,11 @@
 ---
+# ALWAYS START HERE
+# 1. Read .github/SESSION_STATE.md first
+# 2. Read .github/copilot-instructions.md second
+# 3. Read ONLY the skill file needed for this task
+---
+
+---
 mode: agent
 description: "Generate tests for new or modified SafeSphere code"
 tools: ["codebase", "terminal", "file"]

@@ -1,3 +1,21 @@
+# QUICK REF — Session Persistence & Auth
+# Read only this block unless implementing changes
+
+When to use this skill:
+    - Login / Register / auto-login flows
+    - Token revocation
+    - Admin message delivery
+
+Key methods:
+    Prefs.isLoggedIn() / setLoggedIn()
+    Prefs.getSupabaseUserId() ← ALWAYS use this, never getUserId()
+    Prefs.isPendingRevocation() / setRevocationMessage()
+
+Supabase project: qzezwpzmxkwxgrtxucaw.supabase.co
+Admin login: verified working April 2026
+
+Last change: 2026-04-09 — Supabase migrated to new project
+
 # Skill: Session Persistence & Auth
 
 ## Description

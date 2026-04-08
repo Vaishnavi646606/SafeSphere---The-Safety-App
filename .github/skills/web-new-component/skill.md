@@ -1,3 +1,19 @@
+# QUICK REF — Web New Component
+# Read only this block unless implementing changes
+
+When to use this skill:
+  - Adding new dashboard page or component
+  - Changing dashboard UI
+
+Design system (memorize these):
+  Page bg: #08090e | Card: #111219 | Sidebar: #0c0d13
+  Text: #f1f5f9 | Secondary: #94a3b8 | Muted: #64748b
+  Accent: #10b981 emerald | #ef4444 red | #06b6d4 cyan
+  Cards: rounded-2xl border border-white/[0.06]
+  Icons: lucide-react only
+
+Last change: 2026-04-08
+
 # Skill: Create Web Component
 
 ## Description  

@@ -1,3 +1,16 @@
+# QUICK REF — UI/UX Design
+# Read only this block unless implementing changes
+
+When to use this skill:
+  - Dashboard visual design decisions
+  - Dark theme consistency
+  - New page layout planning
+
+Same design tokens as web-new-component.
+Always dark theme. Never light mode elements.
+
+Last change: 2026-04-08
+
 # Skill: UI/UX Design System — SafeSphere Admin
 
 ## Description

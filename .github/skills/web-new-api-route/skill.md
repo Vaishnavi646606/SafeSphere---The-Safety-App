@@ -1,3 +1,18 @@
+# QUICK REF — Web New API Route
+# Read only this block unless implementing changes
+
+When to use this skill:
+  - Adding new Next.js API route
+  - Changing existing admin API routes
+
+Key rules:
+  Admin routes: createServiceClient() — bypasses RLS
+  User routes: createClient() with auth verification
+  All routes in admin/src/app/api/
+  TypeScript only
+
+Last change: 2026-04-08
+
 # Skill: Create Web API Route
 
 ## Description

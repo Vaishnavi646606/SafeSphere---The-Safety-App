@@ -1,3 +1,9 @@
+# QUICK REF — Code Review
+# Read full skill only when doing a full code review session
+
+When to use: explicit code review request only
+Last change: 2026-03-30
+
 # Skill: Code Review
 
 ## Description

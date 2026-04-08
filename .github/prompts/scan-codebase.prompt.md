@@ -1,4 +1,11 @@
 ---
+# ALWAYS START HERE
+# 1. Read .github/SESSION_STATE.md first
+# 2. Read .github/copilot-instructions.md second
+# 3. Read ONLY the skill file needed for this task
+---
+
+---
 mode: agent
 description: "Scan SafeSphere codebase for patterns and inventory"
 tools: ["codebase", "file"]

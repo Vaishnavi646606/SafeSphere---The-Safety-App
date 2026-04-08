@@ -1,3 +1,9 @@
+# QUICK REF — Write Tests
+# Read full skill only when writing tests
+
+When to use: explicit test writing request only
+Last change: 2026-03-30
+
 # Skill: Write Tests for SafeSphere
 
 ## Description

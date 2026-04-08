@@ -1,25 +1,25 @@
+---
 # SafeSphere Session State
-# READ THIS FIRST every session — before anything else
-# UPDATE THIS LAST every session — after every completed change
-# MAX 25 LINES — never grow beyond this
+# READ THIS FIRST - every session, before anything else
+# UPDATE THIS LAST - after every completed change
+# MAX 25 LINES - never grow beyond this
 
-## Last Session — 2026-04-09
-Last task completed: Supabase migrated to new project (qzezwpzmxkwxgrtxucaw.supabase.co)
-Admin dashboard login: verified working
+## MANDATORY SESSION RULES
+# START: Read SESSION_STATE.md -> copilot-instructions.md -> relevant skill only
+# END: Update SESSION_STATE.md + relevant skill QUICK REF + REGISTRY.md if needed
+# COMMIT: Only after ALL fixes done + BUILD SUCCESSFUL confirmed
+
+## Last Session - 2026-04-09
+Last task: .github optimization - token reduction complete
 Build status: SUCCESS on develop branch
 Branch: develop
 
 ## Current State
-Android: All features working. Static location sent as both live + current (known issue).
-Dashboard: All 8 pages working on localhost:3000. Not deployed to Vercel yet.
-Supabase: New project URL. Admin account created and working.
+Android: All features working. Dashboard: All 8 pages on localhost:3000. Not on Vercel yet.
+Supabase: qzezwpzmxkwxgrtxucaw.supabase.co - admin login working.
 
-## Known Pending Work
-- [ ] NEXT: Implement live location tracking (currently sending static stored location)
+## Pending Work
+- [ ] NEXT: Live location tracking on dashboard
 - [ ] LATER: Deploy dashboard to Vercel
 
-## Start Next Session Here
-1. Read SESSION_STATE.md (this file)
-2. Read copilot-instructions.md
-3. Read skill file relevant to task
-4. Begin work
+## Start Next Session With Just This: "Read SESSION_STATE.md and copilot-instructions.md. I want to [task]. After done update SESSION_STATE, skill QUICK REF, REGISTRY."

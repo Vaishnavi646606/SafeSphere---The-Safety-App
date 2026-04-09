@@ -16,14 +16,44 @@ export async function GET(req: NextRequest) {
   if (!adminId) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
 
   const db = createServiceClient()
-  const { data } = await db
+  
+  // Step 1: fetch saved_verifications
+  const { data: verifications, error } = await db
     .from('saved_verifications')
-    .select(`
-      id, incident_session_id, evidence_type, notes, verified_at,
-      users!saved_verifications_user_id_fkey(display_name, phone_hash),
-      admin_accounts!saved_verifications_verified_by_fkey(display_name, email)
-    `)
+    .select('id, incident_session_id, evidence_type, notes, verified_at, user_id, verified_by')
     .order('verified_at', { ascending: false })
 
-  return NextResponse.json({ verifications: data || [], total: data?.length || 0 })
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  if (!verifications || verifications.length === 0) {
+    return NextResponse.json({ verifications: [], total: 0 })
+  }
+
+  // Step 2: fetch user display names separately
+  const userIds = [...new Set(verifications.map((v: any) => v.user_id).filter(Boolean))]
+  const adminIds = [...new Set(verifications.map((v: any) => v.verified_by).filter(Boolean))]
+
+  const { data: users } = await db
+    .from('users')
+    .select('id, display_name, phone_hash')
+    .in('id', userIds)
+
+  const { data: admins } = await db
+    .from('admin_accounts')
+    .select('id, display_name, email')
+    .in('id', adminIds)
+
+  // Step 3: merge manually
+  const usersMap = Object.fromEntries((users || []).map((u: any) => [u.id, u]))
+  const adminsMap = Object.fromEntries((admins || []).map((a: any) => [a.id, a]))
+
+  const enriched = verifications.map((v: any) => ({
+    ...v,
+    users: usersMap[v.user_id] || null,
+    admin_accounts: adminsMap[v.verified_by] || null
+  }))
+
+  return NextResponse.json({ verifications: enriched, total: enriched.length })
 }

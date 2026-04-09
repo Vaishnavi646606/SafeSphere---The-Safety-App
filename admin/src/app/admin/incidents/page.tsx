@@ -84,8 +84,8 @@ export default function IncidentsPage() {
     try {
       const res = await fetch('/api/admin/saved')
       const data = await res.json()
-      const verified = new Set(
-        (data.verifications || []).map((v: any) => v.incident_session_id)
+      const verified: Set<string> = new Set<string>(
+        (data.verifications || []).map((v: any) => String(v.incident_session_id))
       )
       setVerifiedIncidents(verified)
     } catch (error) {

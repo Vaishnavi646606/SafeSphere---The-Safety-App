@@ -54,29 +54,74 @@ export default function IncidentsPage() {
   const [verifyingId, setVerifyingId] = useState<string | null>(null)
   const [verifyForm, setVerifyForm] = useState<Record<string, { evidence_type: string; notes: string }>>({})
   const [verifySuccess, setVerifySuccess] = useState<Record<string, boolean>>({})
-    const [updatingOutcome, setUpdatingOutcome] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [verifiedIncidents, setVerifiedIncidents] = useState<Set<string>>(new Set())
+  const [updatingOutcome, setUpdatingOutcome] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState('all')
 
-    const updateOutcome = async (incidentId: string, resolutionType: string) => {
-      setUpdatingOutcome(incidentId)
-      try {
-        const res = await fetch(`/api/admin/incidents/${incidentId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ resolution_type: resolutionType })
-        })
-        if (!res.ok) throw new Error('Failed to update outcome')
-        setIncidents((prev) =>
-          prev.map((item) =>
-            item.id === incidentId ? { ...item, resolution_type: resolutionType } : item
-          )
+  const updateOutcome = async (incidentId: string, resolutionType: string) => {
+    setUpdatingOutcome(incidentId)
+    try {
+      const res = await fetch(`/api/admin/incidents/${incidentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolution_type: resolutionType })
+      })
+      if (!res.ok) throw new Error('Failed to update outcome')
+      setIncidents((prev) =>
+        prev.map((item) =>
+          item.id === incidentId ? { ...item, resolution_type: resolutionType } : item
         )
-      } catch (error) {
-        console.error('Failed to update outcome:', error)
-      } finally {
-        setUpdatingOutcome(null)
-      }
+      )
+    } catch (error) {
+      console.error('Failed to update outcome:', error)
+    } finally {
+      setUpdatingOutcome(null)
     }
+  }
+
+  const fetchVerifiedIncidents = async () => {
+    try {
+      const res = await fetch('/api/admin/saved')
+      const data = await res.json()
+      const verified = new Set(
+        (data.verifications || []).map((v: any) => v.incident_session_id)
+      )
+      setVerifiedIncidents(verified)
+    } catch (error) {
+      console.error('Failed to fetch verified incidents:', error)
+    }
+  }
+
+  const deleteVerification = async (incident: Incident) => {
+    setDeletingId(incident.id)
+    try {
+      const res = await fetch('/api/admin/verify-rescue', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          incident_session_id: incident.session_id || incident.id,
+          user_id: incident.user_id
+        })
+      })
+      if (res.ok) {
+        setVerifiedIncidents((prev) => {
+          const updated = new Set(prev)
+          updated.delete(incident.session_id || incident.id)
+          return updated
+        })
+        setVerifySuccess((prev) => {
+          const updated = { ...prev }
+          delete updated[incident.id]
+          return updated
+        })
+      }
+    } catch (error) {
+      console.error('Failed to delete verification:', error)
+    } finally {
+      setDeletingId(null)
+    }
+  }
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -107,6 +152,7 @@ export default function IncidentsPage() {
       const res = await fetch(`/api/admin/incidents?${params.toString()}`)
       const data = await res.json()
       setIncidents(data.data || [])
+      await fetchVerifiedIncidents()
     } catch (error) {
       console.error('Failed to fetch incidents:', error)
     } finally {
@@ -172,7 +218,15 @@ export default function IncidentsPage() {
         })
       })
       if (res.ok) {
+        setVerifiedIncidents((prev) => new Set(prev).add(incident.session_id || incident.id))
         setVerifySuccess((prev) => ({ ...prev, [incident.id]: true }))
+      } else if (res.status === 409) {
+        // Already verified, update UI
+        setVerifiedIncidents((prev) => new Set(prev).add(incident.session_id || incident.id))
+        console.log('Already verified')
+      } else {
+        const error = await res.json()
+        console.error('Verification failed:', error.error)
       }
     } catch (e) {
       console.error('Failed to verify rescue:', e)
@@ -420,74 +474,88 @@ export default function IncidentsPage() {
 
                             {(incident.resolution_type === 'rescued' ||
                               incident.resolution_type === 'safe_contact' ||
-                              incident.resolution_type === 'safe_self') && !verifySuccess[incident.id] ? (
-                              <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-                                <h4 className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                                  ✓ Verify This Rescue
-                                </h4>
-                                <p className="mt-1 text-xs text-gray-500">
-                                  Officially verify this rescue to add it to Saved Verifications for trusted reporting.
-                                </p>
-
-                                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                  <div>
-                                    <label className="text-xs text-gray-500">Evidence Type</label>
-                                    <select
-                                      value={verifyForm[incident.id]?.evidence_type || 'verbal_confirmation'}
-                                      onChange={(e) =>
-                                        setVerifyForm((prev) => ({
-                                          ...prev,
-                                          [incident.id]: {
-                                            evidence_type: e.target.value,
-                                            notes: prev[incident.id]?.notes || ''
-                                          }
-                                        }))
-                                      }
-                                      className="mt-1 w-full rounded-xl border border-white/10 bg-[#16171f] px-3 py-2 text-sm text-white"
+                              incident.resolution_type === 'safe_self') ? (
+                              verifiedIncidents.has(incident.session_id || incident.id) ? (
+                                <div className="mt-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                                  <div className="flex items-center justify-between gap-4">
+                                    <div>
+                                      <p className="text-sm font-semibold text-emerald-300">✓ Already Verified</p>
+                                      <p className="mt-1 text-xs text-emerald-200/70">
+                                        This rescue has been officially verified and saved to Trusted Reports.
+                                      </p>
+                                    </div>
+                                    <button
+                                      onClick={() => deleteVerification(incident)}
+                                      disabled={deletingId === incident.id}
+                                      className="shrink-0 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-400 hover:bg-rose-500/20 disabled:opacity-60 transition-all"
                                     >
-                                      <option value="verbal_confirmation">Verbal Confirmation</option>
-                                      <option value="police_report">Police Report</option>
-                                      <option value="hospital_record">Hospital Record</option>
-                                      <option value="witness_statement">Witness Statement</option>
-                                      <option value="call_recording">Call Recording</option>
-                                      <option value="other">Other</option>
-                                    </select>
-                                  </div>
-
-                                  <div>
-                                    <label className="text-xs text-gray-500">Verification Notes</label>
-                                    <input
-                                      type="text"
-                                      placeholder="Brief description of evidence..."
-                                      value={verifyForm[incident.id]?.notes || ''}
-                                      onChange={(e) =>
-                                        setVerifyForm((prev) => ({
-                                          ...prev,
-                                          [incident.id]: {
-                                            evidence_type: prev[incident.id]?.evidence_type || 'verbal_confirmation',
-                                            notes: e.target.value
-                                          }
-                                        }))
-                                      }
-                                      className="mt-1 w-full rounded-xl border border-white/10 bg-[#16171f] px-3 py-2 text-sm text-white placeholder-gray-600"
-                                    />
+                                      {deletingId === incident.id ? 'Deleting...' : '✕ Delete'}
+                                    </button>
                                   </div>
                                 </div>
+                              ) : (
+                                <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                                  <h4 className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
+                                    ✓ Verify This Rescue
+                                  </h4>
+                                  <p className="mt-1 text-xs text-gray-500">
+                                    Officially verify this rescue to add it to Saved Verifications for trusted reporting.
+                                  </p>
 
-                                <button
-                                  onClick={() => verifyRescue(incident)}
-                                  disabled={verifyingId === incident.id}
-                                  className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-500 disabled:opacity-60 transition-all"
-                                >
-                                  {verifyingId === incident.id ? 'Verifying...' : '✓ Confirm & Save Verification'}
-                                </button>
-                              </div>
-                            ) : null}
+                                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                    <div>
+                                      <label className="text-xs text-gray-500">Evidence Type</label>
+                                      <select
+                                        value={verifyForm[incident.id]?.evidence_type || 'verbal_confirmation'}
+                                        onChange={(e) =>
+                                          setVerifyForm((prev) => ({
+                                            ...prev,
+                                            [incident.id]: {
+                                              evidence_type: e.target.value,
+                                              notes: prev[incident.id]?.notes || ''
+                                            }
+                                          }))
+                                        }
+                                        className="mt-1 w-full rounded-xl border border-white/10 bg-[#16171f] px-3 py-2 text-sm text-white"
+                                      >
+                                        <option value="verbal_confirmation">Verbal Confirmation</option>
+                                        <option value="police_report">Police Report</option>
+                                        <option value="hospital_record">Hospital Record</option>
+                                        <option value="witness_statement">Witness Statement</option>
+                                        <option value="call_recording">Call Recording</option>
+                                        <option value="other">Other</option>
+                                      </select>
+                                    </div>
 
-                            {verifySuccess[incident.id] ? (
-                              <div className="mt-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-300">
-                                ✓ Rescue verified and saved to Saved Verifications
-                              </div>
+                                    <div>
+                                      <label className="text-xs text-gray-500">Verification Notes</label>
+                                      <input
+                                        type="text"
+                                        placeholder="Brief description of evidence..."
+                                        value={verifyForm[incident.id]?.notes || ''}
+                                        onChange={(e) =>
+                                          setVerifyForm((prev) => ({
+                                            ...prev,
+                                            [incident.id]: {
+                                              evidence_type: prev[incident.id]?.evidence_type || 'verbal_confirmation',
+                                              notes: e.target.value
+                                            }
+                                          }))
+                                        }
+                                        className="mt-1 w-full rounded-xl border border-white/10 bg-[#16171f] px-3 py-2 text-sm text-white placeholder-gray-600"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    onClick={() => verifyRescue(incident)}
+                                    disabled={verifyingId === incident.id}
+                                    className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-500 disabled:opacity-60 transition-all"
+                                  >
+                                    {verifyingId === incident.id ? 'Verifying...' : '✓ Confirm & Save Verification'}
+                                  </button>
+                                </div>
+                              )
                             ) : null}
                           </td>
                         </tr>

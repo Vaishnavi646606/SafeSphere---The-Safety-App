@@ -34,6 +34,7 @@ import okhttp3.Response;
  */
 public class SupabaseClient {
     private static final String TAG = "SupabaseClient";
+    private static final long LIVE_LINK_TTL_MS = 24L * 60L * 60L * 1000L;
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
     private static final int CONNECT_TIMEOUT_SEC = 15;
     private static final int READ_TIMEOUT_SEC = 30;
@@ -421,10 +422,13 @@ public class SupabaseClient {
                 }
             }
 
-            String nowIso = toIso8601(System.currentTimeMillis());
+            long nowMs = System.currentTimeMillis();
+            String nowIso = toIso8601(nowMs);
+            String expiresIso = toIso8601(nowMs + LIVE_LINK_TTL_MS);
 
             if (rowExists) {
-                // Step 2a — Row exists → UPDATE lat, lng, accuracy, last_updated only
+                // Step 2a — Row exists → UPDATE latest coords only.
+                // Expiry must be extended only on emergency trigger flow.
                 Log.d(TAG, "upsertLiveLocation: updating existing row for userId=" + userId);
                 JSONObject patch = new JSONObject();
                 patch.put("lat", lat);
@@ -447,9 +451,7 @@ public class SupabaseClient {
                 // Step 2b — No row → INSERT new permanent row
                 Log.d(TAG, "upsertLiveLocation: inserting new row for userId=" + userId);
 
-                // expires_at = 1 year from now (effectively permanent)
-                long expiresMs = System.currentTimeMillis() + (365L * 24L * 60L * 60L * 1000L);
-                String expiresIso = toIso8601(expiresMs);
+                // expires_at = 1 day from now for newly created session.
 
                 JSONObject insertData = new JSONObject();
                 insertData.put("token", token.trim());
@@ -527,6 +529,28 @@ public class SupabaseClient {
         } catch (Exception e) {
             Log.e(TAG, "fetchLiveLocationToken: exception", e);
             return null;
+        }
+    }
+
+    /**
+     * Extend live location session expiry by 1 day for a specific user.
+     * This should be called only from emergency-trigger flow.
+     */
+    public SupabaseResponse extendLiveLocationExpiry(String userId) {
+        if (userId == null || userId.trim().isEmpty()) {
+            return new SupabaseResponse(0, false, "userId required");
+        }
+
+        try {
+            long nowMs = System.currentTimeMillis();
+            JSONObject patch = new JSONObject();
+            patch.put("expires_at", toIso8601(nowMs + LIVE_LINK_TTL_MS));
+            patch.put("is_active", true);
+
+            return updateRow("live_location_sessions", "user_id", userId.trim(), patch);
+        } catch (Exception e) {
+            Log.e(TAG, "extendLiveLocationExpiry: exception", e);
+            return new SupabaseResponse(0, false, e.getMessage());
         }
     }
 

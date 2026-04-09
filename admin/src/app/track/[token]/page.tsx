@@ -17,6 +17,7 @@ interface LiveLocationData {
 export default function TrackingPage() {
   const params = useParams()
   const token = params.token as string
+  const REFRESH_INTERVAL_MS = 180000
 
   const [data, setData] = useState<LiveLocationData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -68,9 +69,9 @@ export default function TrackingPage() {
   useEffect(() => { fetchLocation() }, [fetchLocation])
 
   useEffect(() => {
-    const interval = setInterval(() => fetchLocation(), 15000)
+    const interval = setInterval(() => fetchLocation(), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [fetchLocation])
+  }, [fetchLocation, REFRESH_INTERVAL_MS])
 
   useEffect(() => {
     if (!data || !data.found || !data.is_active || mapLoaded) return
@@ -190,7 +191,7 @@ export default function TrackingPage() {
         </a>
 
         <p style={{ textAlign:'center', color:'#475569', fontSize:'12px', margin:'4px 0 0' }}>
-          Auto-refreshes every 15 seconds · Last refresh: {lastRefresh.toLocaleTimeString()}
+          Auto-refreshes every 3 minutes · Last refresh: {lastRefresh.toLocaleTimeString()}
         </p>
 
         <div style={{ textAlign:'center', padding:'16px', borderTop:'1px solid rgba(255,255,255,0.04)', marginTop:'8px' }}>

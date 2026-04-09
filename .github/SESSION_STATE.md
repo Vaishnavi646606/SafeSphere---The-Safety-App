@@ -18,6 +18,7 @@ Git: Configured as Vaishnavi (vaishnavishewale10@gmail.com)
 Android: SafeSphereService + EmergencyManager + MainActivity updated. Clean + Rebuild needed.
 Dashboard: /track/[token] page + /api/track/[token] API created. Push to Vercel needed.
 Supabase: live_location_sessions active. One permanent token per user.
+Policy: Expiry extends ONLY on emergency trigger, not on 3-min background refresh.
 
 ## Completed This Session
 - [x] STEP 0: SQL — live_location_token column + indexes + RLS policies

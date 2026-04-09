@@ -5,7 +5,8 @@ import { NextRequest, NextResponse } from 'next/server'
  * GET /api/track/[token]
  * Public endpoint — no auth required.
  * Returns live location data for a given tracking token.
- * Called by /track/[token] page every 15 seconds.
+ * Called by /track/[token] page every 3 minutes.
+ * Returns data only when is_active=true and expires_at is in the future.
  *
  * Verified table: live_location_sessions
  * Verified columns: token, lat, lng, accuracy, last_updated, display_name, is_active
@@ -35,6 +36,8 @@ export async function GET(
       .from('live_location_sessions')
       .select('lat, lng, accuracy, last_updated, display_name, is_active')
       .eq('token', token.trim())
+      .eq('is_active', true)
+      .gt('expires_at', new Date().toISOString())
       .single()
 
     if (error || !data) {

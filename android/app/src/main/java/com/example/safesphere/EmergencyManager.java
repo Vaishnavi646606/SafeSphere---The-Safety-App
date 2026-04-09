@@ -436,7 +436,7 @@ public class EmergencyManager {
                 Manifest.permission.ACCESS_COARSE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED;
 
-        String locationText;
+        String trackingToken = ensureTrackingToken(ctx);
 
         if (hasFine || hasCoarse) {
             try {
@@ -447,13 +447,17 @@ public class EmergencyManager {
                     if (best != null) {
                         rememberLastKnownLocation(ctx, best);
                         String mapsUrl = mapsLink(best);
-                        String trackingToken = com.example.safesphere.Prefs
-                            .getLiveLocationToken(ctx);
                         String trackingUrl = (trackingToken != null
                             && !trackingToken.trim().isEmpty())
                             ? com.example.safesphere.BuildConfig.TRACKING_BASE_URL
                                 + "/track/" + trackingToken.trim()
                             : mapsUrl;
+                        ensureLiveSessionActiveForEmergency(
+                                ctx,
+                                trackingToken,
+                                best.getLatitude(),
+                                best.getLongitude(),
+                                best.hasAccuracy() ? best.getAccuracy() : 0f);
                         String smsBody = "🚨 Emergency Alert! This person may be in danger. "
                             + "Please try to contact them immediately.\n"
                             + "📍 Last Known Location: " + mapsUrl + "\n"
@@ -472,13 +476,12 @@ public class EmergencyManager {
             long timeMs = Prefs.getLastKnownLocationTime(ctx);
             String age = getLocationAgeText(timeMs);
             String mapsUrl = "https://maps.google.com/?q=" + lat + "," + lng;
-            String trackingToken = com.example.safesphere.Prefs
-                .getLiveLocationToken(ctx);
             String trackingUrl = (trackingToken != null
                 && !trackingToken.trim().isEmpty())
                 ? com.example.safesphere.BuildConfig.TRACKING_BASE_URL
                     + "/track/" + trackingToken.trim()
                 : mapsUrl;
+            ensureLiveSessionActiveForEmergency(ctx, trackingToken, lat, lng, 0f);
             String smsBody = "🚨 Emergency Alert! This person may be in danger. "
                 + "Please try to contact them immediately.\n"
                 + "📍 Last Known Location (" + age + "): " + mapsUrl + "\n"
@@ -489,8 +492,7 @@ public class EmergencyManager {
         }
 
                 // No location at all — still include tracking link if token available
-                String fallbackToken = com.example.safesphere.Prefs
-                .getLiveLocationToken(ctx);
+                String fallbackToken = trackingToken;
                 String fallbackTrackingUrl = (fallbackToken != null
                     && !fallbackToken.trim().isEmpty())
                 ? com.example.safesphere.BuildConfig.TRACKING_BASE_URL
@@ -504,6 +506,84 @@ public class EmergencyManager {
                     : "⚠️ Please ask them to enable GPS.");
             Log.w(TAG, "No location available for SMS — tracking URL included if token available");
             sendSmsToAll(ctx, numbers, noLocBody);
+    }
+
+    private static String ensureTrackingToken(Context ctx) {
+        String token = Prefs.getLiveLocationToken(ctx);
+        if (token != null && !token.trim().isEmpty()) {
+            return token.trim();
+        }
+
+        String generated = java.util.UUID.randomUUID().toString();
+        Prefs.setLiveLocationToken(ctx, generated);
+        Log.d(TAG, "Generated emergency tracking token: " + generated);
+        return generated;
+    }
+
+    private static void ensureLiveSessionActiveForEmergency(
+            Context ctx,
+            String token,
+            double lat,
+            double lng,
+            float accuracy) {
+        if (token == null || token.trim().isEmpty()) {
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                        ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+                android.net.NetworkInfo ni = cm != null ? cm.getActiveNetworkInfo() : null;
+                boolean isOnline = ni != null && ni.isConnected();
+                if (!isOnline) {
+                    Log.d(TAG, "Live session activation skipped (offline)");
+                    return;
+                }
+
+                SupabaseClient client = SupabaseClient.getInstance(ctx);
+                String userId = Prefs.getSupabaseUserId(ctx);
+                if (userId == null || userId.trim().isEmpty()) {
+                    String userPhone = Prefs.getUserPhone(ctx);
+                    JSONObject user = client.getUserByPhone(userPhone);
+                    userId = user == null ? null : user.optString("id", null);
+                    if (userId != null && !userId.trim().isEmpty()) {
+                        Prefs.setSupabaseUserId(ctx, userId);
+                    }
+                }
+
+                if (userId == null || userId.trim().isEmpty()) {
+                    Log.w(TAG, "Live session activation skipped: userId unavailable");
+                    return;
+                }
+
+                String displayName = Prefs.getUserName(ctx);
+                if (displayName == null || displayName.trim().isEmpty()) {
+                    displayName = "SafeSphere User";
+                }
+
+                SupabaseClient.SupabaseResponse response = client.upsertLiveLocation(
+                        userId.trim(),
+                        displayName,
+                        lat,
+                        lng,
+                        accuracy,
+                        token.trim());
+
+                if (!response.success) {
+                    Log.w(TAG, "Emergency live session activation failed: " + response.message);
+                    return;
+                }
+
+                SupabaseClient.SupabaseResponse extendResponse =
+                        client.extendLiveLocationExpiry(userId.trim());
+                if (!extendResponse.success) {
+                    Log.w(TAG, "Emergency live session expiry extend failed: " + extendResponse.message);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Emergency live session activation exception", e);
+            }
+        }, "emergency-live-session-activate").start();
     }
 
     private static Location getBestCachedLocation(LocationManager lm) {

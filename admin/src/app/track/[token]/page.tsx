@@ -22,7 +22,6 @@ export default function TrackingPage() {
   const [data, setData] = useState<LiveLocationData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [mapLoaded, setMapLoaded] = useState(false)
 
@@ -56,7 +55,6 @@ export default function TrackingPage() {
       } else {
         setData(json)
         setError(null)
-        setLastRefresh(new Date())
       }
     } catch {
       setError('Network error — check your connection')
@@ -71,7 +69,7 @@ export default function TrackingPage() {
   useEffect(() => {
     const interval = setInterval(() => fetchLocation(), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [fetchLocation, REFRESH_INTERVAL_MS])
+  }, [fetchLocation])
 
   useEffect(() => {
     if (!data || !data.found || !data.is_active || mapLoaded) return
@@ -169,7 +167,7 @@ export default function TrackingPage() {
         <div style={{ background:'#111219', border:'1px solid rgba(255,255,255,0.06)', borderRadius:'14px', padding:'16px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
             <Clock size={16} color="#64748b" />
-            <span style={{ color:'#94a3b8', fontSize:'14px' }}>Updated {ageText}</span>
+            <span style={{ color:'#94a3b8', fontSize:'14px' }}>Location reported {ageText}</span>
           </div>
           <div style={{ fontSize:'12px', color:statusColor, background:`${statusColor}18`, padding:'4px 10px', borderRadius:'20px', border:`1px solid ${statusColor}40` }}>
             {statusColor === '#10b981' ? 'Live' : statusColor === '#f59e0b' ? 'Recent' : 'Delayed'}
@@ -191,7 +189,7 @@ export default function TrackingPage() {
         </a>
 
         <p style={{ textAlign:'center', color:'#475569', fontSize:'12px', margin:'4px 0 0' }}>
-          Auto-refreshes every 3 minutes · Last refresh: {lastRefresh.toLocaleTimeString()}
+          Auto-refreshes every 3 minutes · Last refresh: {ageText}
         </p>
 
         <div style={{ textAlign:'center', padding:'16px', borderTop:'1px solid rgba(255,255,255,0.04)', marginTop:'8px' }}>

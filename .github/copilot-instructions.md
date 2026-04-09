@@ -61,6 +61,7 @@ WHAT IS WORKING:
 KNOWN ISSUES:
 - Live location system complete — needs Clean + Rebuild + git push to Vercel
 - Test: trigger emergency → confirm SMS tracking URL → open link → verify map
+- Tracking page "Location reported" age reflects device upload recency, not web page refresh time
 
 PATH RULES:
 - Web root: `admin/` not `safesphere-admin/`

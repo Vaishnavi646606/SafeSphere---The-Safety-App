@@ -371,6 +371,165 @@ public class SupabaseClient {
         }
     }
 
+    /**
+     * Upsert live location session for this user.
+     * One permanent row per user in live_location_sessions table.
+     * Logic:
+     *   - Check if row exists for this userId
+     *   - If YES  → UPDATE lat, lng, accuracy, last_updated
+     *   - If NO   → INSERT new row with token, display_name, started_at, expires_at, is_active=true
+     *
+     * Table columns verified:
+     *   id, token, user_id, lat, lng, accuracy, last_updated,
+     *   started_at, expires_at, is_active, display_name
+     *
+     * Called from SafeSphereService background location refresh thread.
+     * Never call from main thread.
+     *
+     * @param userId      Supabase users.id (UUID)
+     * @param displayName users.display_name shown on tracking page
+     * @param lat         current latitude
+     * @param lng         current longitude
+     * @param accuracy    location accuracy in metres (0 if unknown)
+     * @param token       permanent tracking token from Prefs.getLiveLocationToken()
+     */
+    public SupabaseResponse upsertLiveLocation(String userId, String displayName,
+            double lat, double lng, float accuracy, String token) {
+        if (userId == null || userId.trim().isEmpty()) {
+            Log.w(TAG, "upsertLiveLocation: userId is null or empty — skipping");
+            return new SupabaseResponse(0, false, "userId required");
+        }
+        if (token == null || token.trim().isEmpty()) {
+            Log.w(TAG, "upsertLiveLocation: token is null or empty — skipping");
+            return new SupabaseResponse(0, false, "token required");
+        }
+
+        try {
+            // Step 1 — Check if a row already exists for this user
+            String encodedUserId = URLEncoder.encode(userId.trim(), StandardCharsets.UTF_8.name());
+            String checkQuery = "select=id&user_id=eq." + encodedUserId + "&limit=1";
+            SupabaseResponse checkResponse = getRows("live_location_sessions", checkQuery);
+
+            boolean rowExists = false;
+            if (checkResponse.success && checkResponse.message != null
+                    && !checkResponse.message.isEmpty()) {
+                try {
+                    JSONArray rows = new JSONArray(checkResponse.message);
+                    rowExists = rows.length() > 0;
+                } catch (Exception parseErr) {
+                    Log.w(TAG, "upsertLiveLocation: could not parse check response", parseErr);
+                }
+            }
+
+            String nowIso = toIso8601(System.currentTimeMillis());
+
+            if (rowExists) {
+                // Step 2a — Row exists → UPDATE lat, lng, accuracy, last_updated only
+                Log.d(TAG, "upsertLiveLocation: updating existing row for userId=" + userId);
+                JSONObject patch = new JSONObject();
+                patch.put("lat", lat);
+                patch.put("lng", lng);
+                patch.put("accuracy", accuracy);
+                patch.put("last_updated", nowIso);
+                patch.put("is_active", true);
+
+                SupabaseResponse updateResponse = updateRow(
+                        "live_location_sessions", "user_id", userId.trim(), patch);
+
+                if (updateResponse.success) {
+                    Log.d(TAG, "upsertLiveLocation: updated successfully");
+                } else {
+                    Log.w(TAG, "upsertLiveLocation: update failed — " + updateResponse.message);
+                }
+                return updateResponse;
+
+            } else {
+                // Step 2b — No row → INSERT new permanent row
+                Log.d(TAG, "upsertLiveLocation: inserting new row for userId=" + userId);
+
+                // expires_at = 1 year from now (effectively permanent)
+                long expiresMs = System.currentTimeMillis() + (365L * 24L * 60L * 60L * 1000L);
+                String expiresIso = toIso8601(expiresMs);
+
+                JSONObject insertData = new JSONObject();
+                insertData.put("token", token.trim());
+                insertData.put("user_id", userId.trim());
+                insertData.put("display_name",
+                        displayName != null && !displayName.trim().isEmpty()
+                        ? displayName.trim() : "SafeSphere User");
+                insertData.put("lat", lat);
+                insertData.put("lng", lng);
+                insertData.put("accuracy", accuracy);
+                insertData.put("last_updated", nowIso);
+                insertData.put("started_at", nowIso);
+                insertData.put("expires_at", expiresIso);
+                insertData.put("is_active", true);
+
+                SupabaseResponse insertResponse = insertRow(
+                        "live_location_sessions", insertData, "return=minimal");
+
+                if (insertResponse.success) {
+                    Log.d(TAG, "upsertLiveLocation: inserted successfully with token=" + token);
+                } else {
+                    Log.w(TAG, "upsertLiveLocation: insert failed — " + insertResponse.message);
+                }
+                return insertResponse;
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "upsertLiveLocation: exception", e);
+            return new SupabaseResponse(0, false, e.getMessage());
+        }
+    }
+
+    /**
+     * Fetch the live location token for this user from Supabase users table.
+     * Called once on startup to populate Prefs.setLiveLocationToken().
+     * Returns null if no token found or user not found.
+     * Never call from main thread.
+     *
+     * @param userId Supabase users.id (UUID)
+     * @return token string or null
+     */
+    public String fetchLiveLocationToken(String userId) {
+        if (userId == null || userId.trim().isEmpty()) {
+            Log.w(TAG, "fetchLiveLocationToken: userId is null — skipping");
+            return null;
+        }
+        try {
+            String encodedUserId = URLEncoder.encode(userId.trim(), StandardCharsets.UTF_8.name());
+            String query = "select=live_location_token&id=eq." + encodedUserId + "&limit=1";
+            SupabaseResponse response = getRows("users", query);
+
+            if (!response.success || response.message == null || response.message.isEmpty()) {
+                Log.w(TAG, "fetchLiveLocationToken: query failed — " + response.message);
+                return null;
+            }
+
+            JSONArray rows = new JSONArray(response.message);
+            if (rows.length() == 0) {
+                Log.w(TAG, "fetchLiveLocationToken: no user found for userId=" + userId);
+                return null;
+            }
+
+            JSONObject row = rows.optJSONObject(0);
+            if (row == null) return null;
+
+            String token = row.optString("live_location_token", null);
+            if (token == null || token.trim().isEmpty()) {
+                Log.w(TAG, "fetchLiveLocationToken: token is null in DB for userId=" + userId);
+                return null;
+            }
+
+            Log.d(TAG, "fetchLiveLocationToken: fetched token for userId=" + userId);
+            return token.trim();
+
+        } catch (Exception e) {
+            Log.e(TAG, "fetchLiveLocationToken: exception", e);
+            return null;
+        }
+    }
+
     public void updateUserLocation(String userId, double lat, double lng) {
         new Thread(() -> {
             try {

@@ -48,6 +48,15 @@ interface FeedbackItem {
   submitted_at: string
 }
 
+interface LiveSession {
+  found: boolean
+  lat?: number
+  lng?: number
+  accuracy?: number
+  last_updated?: string
+  is_active?: boolean
+}
+
 export default function UserDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -56,6 +65,8 @@ export default function UserDetailPage() {
   const [user, setUser] = useState<UserDetail | null>(null)
   const [emergencies, setEmergencies] = useState<EmergencyEvent[]>([])
   const [feedback, setFeedback] = useState<FeedbackItem[]>([])
+  const [liveSession, setLiveSession] = useState<LiveSession | null>(null)
+  const [liveLoading, setLiveLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
 
@@ -85,9 +96,38 @@ export default function UserDetailPage() {
     }
   }
 
+  const fetchLiveSession = async () => {
+    setLiveLoading(true)
+    try {
+      // Fetch live location token from users table via admin API
+      const res = await fetch(`/api/admin/users/${userId}`)
+      const data = await res.json()
+      const token = data.user?.live_location_token
+      if (!token) {
+        setLiveSession({ found: false })
+        return
+      }
+      const liveRes = await fetch(`/api/track/${token}`)
+      const liveData = await liveRes.json()
+      setLiveSession(liveData)
+    } catch {
+      setLiveSession({ found: false })
+    } finally {
+      setLiveLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchUserData()
   }, [userId])
+
+  useEffect(() => {
+    if (user) {
+      fetchLiveSession()
+      const interval = setInterval(fetchLiveSession, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [user])
 
   const toggleUserStatus = async () => {
     if (!user) return
@@ -220,6 +260,74 @@ const avgRating = useMemo(() => {
         <StatsCard label="Rescued/Safe" value={stats.rescued} icon={Shield} color="#10b981" />
         <StatsCard label="False Alarms" value={stats.falseAlarms} icon={AlertTriangle} color="#ef4444" />
         <StatsCard label="Avg Rating" value={avgRating} icon={Shield} color="#06b6d4" />
+      </div>
+
+      {/* Live Location Card */}
+      <div className="rounded-2xl border border-white/5 bg-[#12121a] p-6 shadow-lg shadow-black/20">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-semibold text-white">Live Location</h3>
+          <div className="flex items-center gap-2">
+            {liveSession?.found && liveSession?.is_active && liveSession?.last_updated && (() => {
+              const diffMin = (Date.now() - new Date(liveSession.last_updated).getTime()) / 60000
+              const color = diffMin < 5 ? 'bg-emerald-500' : diffMin < 15 ? 'bg-amber-500' : 'bg-red-500'
+              const label = diffMin < 5 ? 'Live' : diffMin < 15 ? 'Recent' : 'Delayed'
+              return (
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-white ${color}`}>
+                  <span className="h-1.5 w-1.5 rounded-full bg-white/80" />
+                  {label}
+                </span>
+              )
+            })()}
+            <button
+              onClick={fetchLiveSession}
+              disabled={liveLoading}
+              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-white/10 disabled:opacity-60"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+        {liveLoading && !liveSession ? (
+          <p className="text-sm text-gray-500">Loading live session...</p>
+        ) : !liveSession?.found ? (
+          <div className="rounded-xl border border-white/5 bg-[#16171f] p-4">
+            <p className="text-sm text-gray-500">No active live session found for this user.</p>
+            <p className="text-xs text-gray-600 mt-1">Live sessions are created when the user has protection ON and location enabled.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-white/5 bg-[#16171f] p-3">
+                <p className="text-xs text-gray-500 mb-1">Latitude</p>
+                <p className="text-sm font-mono text-white">{liveSession.lat?.toFixed(6)}</p>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-[#16171f] p-3">
+                <p className="text-xs text-gray-500 mb-1">Longitude</p>
+                <p className="text-sm font-mono text-white">{liveSession.lng?.toFixed(6)}</p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-white/5 bg-[#16171f] p-3 flex justify-between items-center">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Last Updated</p>
+                <p className="text-sm text-white">{formatDate(liveSession.last_updated ?? null)}</p>
+              </div>
+              {liveSession.accuracy != null && liveSession.accuracy > 0 && (
+                <div className="text-right">
+                  <p className="text-xs text-gray-500 mb-1">Accuracy</p>
+                  <p className="text-sm text-white">±{Math.round(liveSession.accuracy)}m</p>
+                </div>
+              )}
+            </div>
+            <a
+              href={`https://maps.google.com/?q=${liveSession.lat},${liveSession.lng}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-center text-sm font-medium text-white transition-colors justify-center"
+            >
+              Open in Google Maps
+            </a>
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-white/5 bg-[#12121a] p-6 shadow-lg shadow-black/20">

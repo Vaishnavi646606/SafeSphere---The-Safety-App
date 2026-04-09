@@ -390,10 +390,63 @@ public class SafeSphereService extends Service implements ShakeDetector.OnShakeL
                     if (userId != null && !userId.isEmpty()) {
                         SupabaseClient client =
                                 SupabaseClient.getInstance(getApplicationContext());
+
+                        // Sync stored location to users table
                         client.updateUserLocation(userId, lat, lng);
                         Prefs.setLastSyncedLocation(
                                 getApplicationContext(), lat, lng, timestampMs);
                         Log.d(TAG, "Location synced to Supabase");
+
+                        // Upsert live location session for public tracking page
+                        final String finalUserId = userId;
+                        final android.location.Location finalLocation = location;
+                        new Thread(() -> {
+                            try {
+                                String token = Prefs.getLiveLocationToken(
+                                        getApplicationContext());
+
+                                // If token not in Prefs — fetch from Supabase users table
+                                if (token == null || token.trim().isEmpty()) {
+                                    Log.d(TAG, "Live location token missing in Prefs — fetching from Supabase");
+                                    token = client.fetchLiveLocationToken(finalUserId);
+                                    if (token != null && !token.trim().isEmpty()) {
+                                        Prefs.setLiveLocationToken(
+                                                getApplicationContext(), token);
+                                        Log.d(TAG, "Live location token fetched and stored: " + token);
+                                    } else {
+                                        // Token missing in DB too — generate new UUID
+                                        token = java.util.UUID.randomUUID().toString();
+                                        Prefs.setLiveLocationToken(
+                                                getApplicationContext(), token);
+                                        Log.w(TAG, "No token in DB — generated new token: " + token);
+                                    }
+                                }
+
+                                // Get display name for tracking page
+                                String displayName = Prefs.getUserName(getApplicationContext());
+                                if (displayName == null || displayName.trim().isEmpty()) {
+                                    displayName = "SafeSphere User";
+                                }
+
+                                // Get location accuracy — use 0f if not available
+                                float locationAccuracy = finalLocation.hasAccuracy()
+                                        ? finalLocation.getAccuracy() : 0f;
+
+                                // Upsert live location row in Supabase
+                                SupabaseClient.SupabaseResponse liveResponse =
+                                        client.upsertLiveLocation(
+                                                finalUserId, displayName, lat, lng,
+                                                locationAccuracy, token);
+                                if (liveResponse.success) {
+                                    Log.d(TAG, "Live location upserted successfully");
+                                } else {
+                                    Log.w(TAG, "Live location upsert failed: "
+                                            + liveResponse.message);
+                                }
+                            } catch (Exception e) {
+                                Log.w(TAG, "Live location upsert exception", e);
+                            }
+                        }, "live-location-upsert").start();
                     }
                 } else {
                     Log.d(TAG, "Offline - location saved locally only");

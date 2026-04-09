@@ -23,6 +23,7 @@ android {
 
         // Update with local dev IP and provided Supabase anon key
         buildConfigField "String", "VERCEL_BASE_URL", "\"${localProps['VERCEL_BASE_URL'] ?: ''}\""
+        buildConfigField "String", "TRACKING_BASE_URL", "\"${localProps['TRACKING_BASE_URL'] ?: ''}\""
         buildConfigField "String", "SUPABASE_URL", "\"${localProps['SUPABASE_URL'] ?: ''}\""
         buildConfigField "String", "SUPABASE_ANON_KEY", "\"${localProps['SUPABASE_ANON_KEY'] ?: ''}\""
         buildConfigField "String", "PHONE_HASH_SALT", "\"${localProps['PHONE_HASH_SALT'] ?: ''}\""

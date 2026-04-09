@@ -333,10 +333,16 @@ public class MainActivity extends AppCompatActivity {
                 : diffMin < 60 ? diffMin + " min ago"
                 : (diffMin / 60) + " hr ago";
             String link = "https://maps.google.com/?q=" + lat + "," + lng;
-            String text = live
-                ? "📍 Last Known Location (" + age + "): " + link
-                  + "\n🔴 Live Location: " + link
-                : "📍 Last Known Location (" + age + "): " + link;
+                String trackingToken = Prefs.getLiveLocationToken(this);
+                String trackingUrl = (trackingToken != null
+                    && !trackingToken.trim().isEmpty())
+                    ? com.example.safesphere.BuildConfig.TRACKING_BASE_URL
+                        + "/track/" + trackingToken.trim()
+                    : link;
+                String text = live
+                    ? "📍 Last Known Location (" + age + "): " + link
+                      + "\n🔴 Live Tracking: " + trackingUrl
+                    : "📍 Last Known Location (" + age + "): " + link;
 
             Intent sendIntent = new Intent(Intent.ACTION_SEND);
             sendIntent.setType("text/plain");
@@ -407,26 +413,28 @@ public class MainActivity extends AppCompatActivity {
         uiHandler.postDelayed(pendingLocationShareRunnable, LOCATION_POLL_INTERVAL_MS);
     }
 
-    private void openShareChooser(boolean live, String currentLink) {
-        String liveLink = EmergencyManager.buildLiveLocationLink(this);
-        if (!isUsableMapsLink(liveLink)) {
-            liveLink = currentLink;
-        }
+        private void openShareChooser(boolean live, String currentLink) {
+        String trackingToken = Prefs.getLiveLocationToken(this);
+        String trackingUrl = (trackingToken != null
+            && !trackingToken.trim().isEmpty())
+            ? com.example.safesphere.BuildConfig.TRACKING_BASE_URL
+                + "/track/" + trackingToken.trim()
+            : currentLink;
 
         String text = live
-                ? "📍 My current location: " + currentLink +
-                  "\n🔴 Live location: "      + liveLink
-                : "📍 My current location: " + currentLink;
+            ? "📍 My current location: " + currentLink
+              + "\n🔴 Live tracking: " + trackingUrl
+            : "📍 My current location: " + currentLink;
 
         Intent sendIntent = new Intent(Intent.ACTION_SEND);
         sendIntent.setType("text/plain");
         sendIntent.putExtra(Intent.EXTRA_TEXT, text);
 
         startActivity(Intent.createChooser(
-                sendIntent,
-                live ? "Share live location via" : "Share current location via"
+            sendIntent,
+            live ? "Share live location via" : "Share current location via"
         ));
-    }
+        }
 
     private void requestOneShotLocationUpdate() {
         boolean hasFine = ContextCompat.checkSelfPermission(this,

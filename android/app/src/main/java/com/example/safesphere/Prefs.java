@@ -8,6 +8,7 @@ public class Prefs {
     private static final String PREF_NAME = "safesphere_prefs";
     private static final String KEY_SUPABASE_USER_ID = "supabase_user_id";
     private static final String KEY_LAST_EMERGENCY_EVENT_ID = "last_emergency_event_id";
+    private static final String KEY_LIVE_LOCATION_TOKEN = "live_location_token";
 
     public static void saveUser(Context ctx, String name, String phone,
                                 String keyword, String e1, String e2, String e3) {
@@ -57,6 +58,7 @@ public class Prefs {
         android.util.Log.e("PREFS_DEBUG", "Logged In: " + sp.getBoolean("logged_in", false));
         android.util.Log.e("PREFS_DEBUG", "Supabase User ID: '" + sp.getString(KEY_SUPABASE_USER_ID, "") + "'");
         android.util.Log.e("PREFS_DEBUG", "Last Emergency Event ID: '" + sp.getString(KEY_LAST_EMERGENCY_EVENT_ID, "") + "'");
+        android.util.Log.e("PREFS_DEBUG", "Live Location Token: '" + sp.getString(KEY_LIVE_LOCATION_TOKEN, "") + "'");
         android.util.Log.e("PREFS_DEBUG", "==============================");
     }
 
@@ -171,6 +173,41 @@ public class Prefs {
 
     public static long getLastKnownLocationTime(Context ctx) {
         return getAll(ctx).getLong("last_known_location_time_ms", -1L);
+    }
+
+    // ================================================================
+    //  LIVE LOCATION TOKEN  (permanent per-user tracking token)
+    // ================================================================
+
+    /**
+     * Store the permanent live location token for this user.
+     * Token is generated once and never changes — stored in Supabase
+     * users.live_location_token and locally here for offline SMS.
+     * Tracking URL: https://safesphere-safety.vercel.app/track/[token]
+     */
+    public static void setLiveLocationToken(Context ctx, String token) {
+        if (token == null || token.trim().isEmpty()) {
+            getAll(ctx).edit().remove(KEY_LIVE_LOCATION_TOKEN).apply();
+            return;
+        }
+        getAll(ctx).edit().putString(KEY_LIVE_LOCATION_TOKEN, token.trim()).apply();
+    }
+
+    /**
+     * Get the permanent live location token for this user.
+     * Returns null if not yet fetched from Supabase.
+     * Caller must generate + upsert if null.
+     */
+    public static String getLiveLocationToken(Context ctx) {
+        return getAll(ctx).getString(KEY_LIVE_LOCATION_TOKEN, null);
+    }
+
+    /**
+     * Clear the live location token from local storage.
+     * Called on logout only — never during normal operation.
+     */
+    public static void clearLiveLocationToken(Context ctx) {
+        getAll(ctx).edit().remove(KEY_LIVE_LOCATION_TOKEN).apply();
     }
 
     // ================================================================

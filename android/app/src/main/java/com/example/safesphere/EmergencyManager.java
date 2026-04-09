@@ -446,10 +446,19 @@ public class EmergencyManager {
                     Location best = getBestCachedLocation(lm);
                     if (best != null) {
                         rememberLastKnownLocation(ctx, best);
-                        String link = mapsLink(best);
-                        locationText = "📍 Current Location: " + link
-                                + "\n🔴 Live Location: " + link;
-                        sendSmsToAll(ctx, numbers, buildMsg(locationText, null));
+                        String mapsUrl = mapsLink(best);
+                        String trackingToken = com.example.safesphere.Prefs
+                            .getLiveLocationToken(ctx);
+                        String trackingUrl = (trackingToken != null
+                            && !trackingToken.trim().isEmpty())
+                            ? com.example.safesphere.BuildConfig.TRACKING_BASE_URL
+                                + "/track/" + trackingToken.trim()
+                            : mapsUrl;
+                        String smsBody = "🚨 Emergency Alert! This person may be in danger. "
+                            + "Please try to contact them immediately.\n"
+                            + "📍 Last Known Location: " + mapsUrl + "\n"
+                            + "🔴 Live Tracking: " + trackingUrl;
+                        sendSmsToAll(ctx, numbers, smsBody);
                         return;
                     }
                 }
@@ -462,19 +471,39 @@ public class EmergencyManager {
         if (!Double.isNaN(lat) && !Double.isNaN(lng)) {
             long timeMs = Prefs.getLastKnownLocationTime(ctx);
             String age = getLocationAgeText(timeMs);
-            String link = "https://maps.google.com/?q=" + lat + "," + lng;
-            locationText = "📍 Last Known Location (" + age + "): " + link
-                    + "\n🔴 Live Location: " + link;
-            Log.d(TAG, "SMS using stored location fallback");
-            sendSmsToAll(ctx, numbers, buildMsg(locationText, null));
+            String mapsUrl = "https://maps.google.com/?q=" + lat + "," + lng;
+            String trackingToken = com.example.safesphere.Prefs
+                .getLiveLocationToken(ctx);
+            String trackingUrl = (trackingToken != null
+                && !trackingToken.trim().isEmpty())
+                ? com.example.safesphere.BuildConfig.TRACKING_BASE_URL
+                    + "/track/" + trackingToken.trim()
+                : mapsUrl;
+            String smsBody = "🚨 Emergency Alert! This person may be in danger. "
+                + "Please try to contact them immediately.\n"
+                + "📍 Last Known Location (" + age + "): " + mapsUrl + "\n"
+                + "🔴 Live Tracking: " + trackingUrl;
+            Log.d(TAG, "SMS using stored location fallback with tracking URL");
+            sendSmsToAll(ctx, numbers, smsBody);
             return;
         }
 
-        // No location at all
-        locationText = "⚠️ Location not available."
-                + " Please enable GPS on this device.";
-        Log.w(TAG, "No location available for SMS");
-        sendSmsToAll(ctx, numbers, buildMsg(locationText, null));
+                // No location at all — still include tracking link if token available
+                String fallbackToken = com.example.safesphere.Prefs
+                .getLiveLocationToken(ctx);
+                String fallbackTrackingUrl = (fallbackToken != null
+                    && !fallbackToken.trim().isEmpty())
+                ? com.example.safesphere.BuildConfig.TRACKING_BASE_URL
+                        + "/track/" + fallbackToken.trim()
+                : null;
+            String noLocBody = "🚨 Emergency Alert! This person may be in danger. "
+                + "Please try to contact them immediately.\n"
+                + "📍 Location: Not available — GPS may be off.\n"
+                    + (fallbackTrackingUrl != null
+                        ? "🔴 Live Tracking: " + fallbackTrackingUrl
+                    : "⚠️ Please ask them to enable GPS.");
+            Log.w(TAG, "No location available for SMS — tracking URL included if token available");
+            sendSmsToAll(ctx, numbers, noLocBody);
     }
 
     private static Location getBestCachedLocation(LocationManager lm) {

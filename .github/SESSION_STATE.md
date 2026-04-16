@@ -20,6 +20,7 @@ Dashboard: /track/[token] page + /api/track/[token] API created. Push to Vercel 
 Supabase: live_location_sessions active. One permanent token per user.
 Policy: Expiry extends ONLY on emergency trigger, not on 3-min background refresh.
 UI Note: "Location reported" time is phone-upload age; it can be delayed even when page refresh is recent.
+Fix Note: Literal token values like "null" are now sanitized; users token is synced during live upsert.
 
 ## Completed This Session
 - [x] STEP 0: SQL — live_location_token column + indexes + RLS policies

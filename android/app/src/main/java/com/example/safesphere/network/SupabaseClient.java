@@ -405,7 +405,16 @@ public class SupabaseClient {
             return new SupabaseResponse(0, false, "token required");
         }
 
+        String cleanedToken = token.trim();
+        if ("null".equalsIgnoreCase(cleanedToken) || "undefined".equalsIgnoreCase(cleanedToken)) {
+            Log.w(TAG, "upsertLiveLocation: token is invalid literal value — skipping");
+            return new SupabaseResponse(0, false, "token invalid");
+        }
+
         try {
+            // Best effort: keep users.live_location_token in sync for new users.
+            ensureUserLiveLocationToken(userId.trim(), cleanedToken);
+
             // Step 1 — Check if a row already exists for this user
             String encodedUserId = URLEncoder.encode(userId.trim(), StandardCharsets.UTF_8.name());
             String checkQuery = "select=id&user_id=eq." + encodedUserId + "&limit=1";
@@ -518,13 +527,21 @@ public class SupabaseClient {
             if (row == null) return null;
 
             String token = row.optString("live_location_token", null);
-            if (token == null || token.trim().isEmpty()) {
+            if (token == null) {
                 Log.w(TAG, "fetchLiveLocationToken: token is null in DB for userId=" + userId);
                 return null;
             }
 
+            String cleaned = token.trim();
+            if (cleaned.isEmpty()
+                    || "null".equalsIgnoreCase(cleaned)
+                    || "undefined".equalsIgnoreCase(cleaned)) {
+                Log.w(TAG, "fetchLiveLocationToken: token is empty/invalid in DB for userId=" + userId);
+                return null;
+            }
+
             Log.d(TAG, "fetchLiveLocationToken: fetched token for userId=" + userId);
-            return token.trim();
+            return cleaned;
 
         } catch (Exception e) {
             Log.e(TAG, "fetchLiveLocationToken: exception", e);
@@ -551,6 +568,23 @@ public class SupabaseClient {
         } catch (Exception e) {
             Log.e(TAG, "extendLiveLocationExpiry: exception", e);
             return new SupabaseResponse(0, false, e.getMessage());
+        }
+    }
+
+    private void ensureUserLiveLocationToken(String userId, String token) {
+        if (userId == null || userId.trim().isEmpty() || token == null || token.trim().isEmpty()) {
+            return;
+        }
+        try {
+            JSONObject patch = new JSONObject();
+            patch.put("live_location_token", token.trim());
+            patch.put("updated_at", toIso8601(System.currentTimeMillis()));
+            SupabaseResponse response = updateRow("users", "id", userId.trim(), patch);
+            if (!response.success) {
+                Log.w(TAG, "ensureUserLiveLocationToken: could not update users token: " + response.message);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "ensureUserLiveLocationToken: exception", e);
         }
     }
 

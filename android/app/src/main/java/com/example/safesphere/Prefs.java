@@ -186,11 +186,18 @@ public class Prefs {
      * Tracking URL: https://safesphere-safety.vercel.app/track/[token]
      */
     public static void setLiveLocationToken(Context ctx, String token) {
-        if (token == null || token.trim().isEmpty()) {
+        if (token == null) {
             getAll(ctx).edit().remove(KEY_LIVE_LOCATION_TOKEN).apply();
             return;
         }
-        getAll(ctx).edit().putString(KEY_LIVE_LOCATION_TOKEN, token.trim()).apply();
+        String cleaned = token.trim();
+        if (cleaned.isEmpty()
+                || "null".equalsIgnoreCase(cleaned)
+                || "undefined".equalsIgnoreCase(cleaned)) {
+            getAll(ctx).edit().remove(KEY_LIVE_LOCATION_TOKEN).apply();
+            return;
+        }
+        getAll(ctx).edit().putString(KEY_LIVE_LOCATION_TOKEN, cleaned).apply();
     }
 
     /**
@@ -199,7 +206,17 @@ public class Prefs {
      * Caller must generate + upsert if null.
      */
     public static String getLiveLocationToken(Context ctx) {
-        return getAll(ctx).getString(KEY_LIVE_LOCATION_TOKEN, null);
+        String token = getAll(ctx).getString(KEY_LIVE_LOCATION_TOKEN, null);
+        if (token == null) {
+            return null;
+        }
+        String cleaned = token.trim();
+        if (cleaned.isEmpty()
+                || "null".equalsIgnoreCase(cleaned)
+                || "undefined".equalsIgnoreCase(cleaned)) {
+            return null;
+        }
+        return cleaned;
     }
 
     /**

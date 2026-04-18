@@ -1,9 +1,11 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ChevronDown, ChevronUp, RefreshCw, Search } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
+
+const AUTO_REFRESH_INTERVAL_MS = 15000
 
 interface Incident {
   id: string
@@ -80,7 +82,7 @@ export default function IncidentsPage() {
     }
   }
 
-  const fetchVerifiedIncidents = async () => {
+  const fetchVerifiedIncidents = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/saved')
       const data = await res.json()
@@ -91,7 +93,7 @@ export default function IncidentsPage() {
     } catch (error) {
       console.error('Failed to fetch verified incidents:', error)
     }
-  }
+  }, [])
 
   const deleteVerification = async (incident: Incident) => {
     setDeletingId(incident.id)
@@ -147,7 +149,7 @@ export default function IncidentsPage() {
     return incident.resolution_type === 'safe_contact' && Boolean(incident.admin_notes?.includes('[AUTO_RESCUE]'))
   }
 
-  const fetchIncidents = async () => {
+  const fetchIncidents = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
@@ -162,11 +164,19 @@ export default function IncidentsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [activeFilter, fetchVerifiedIncidents])
 
   useEffect(() => {
     fetchIncidents()
-  }, [activeFilter])
+  }, [fetchIncidents])
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      fetchIncidents()
+    }, AUTO_REFRESH_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
+  }, [fetchIncidents])
 
   const filteredIncidents = useMemo(() => {
     const q = search.trim().toLowerCase()

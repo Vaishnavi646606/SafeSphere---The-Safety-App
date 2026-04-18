@@ -19,6 +19,22 @@ interface HelperLinkRow {
   auto_rescue_at?: string | null
 }
 
+interface AutoRescueResult {
+  triggered: boolean
+  eventId: string | null
+  sessionId: string | null
+  verificationCreated: boolean
+}
+
+interface AutoRescueEventRow {
+  id: string
+  session_id: string | null
+  triggered_at: string
+  status: string | null
+  resolution_type: string | null
+  admin_notes: string | null
+}
+
 function toRadians(value: number): number {
   return (value * Math.PI) / 180
 }
@@ -45,6 +61,68 @@ function readCoordinate(value: unknown): number | null {
     if (Number.isFinite(parsed)) return parsed
   }
   return null
+}
+
+function hasAutoRescueNote(notes: string | null | undefined): boolean {
+  return typeof notes === 'string' && notes.includes('[AUTO_RESCUE]')
+}
+
+function hasManualResolution(value: string | null | undefined): boolean {
+  if (!value || value.trim().length === 0) return false
+  return value.trim() !== 'safe_contact'
+}
+
+async function maybeCreateAutoVerification(
+  supabase: ReturnType<typeof createServiceClient>,
+  userId: string,
+  incidentSessionId: string,
+  distanceM: number,
+  nowIso: string
+): Promise<boolean> {
+  const cleanSessionId = incidentSessionId.trim()
+  if (!cleanSessionId) return false
+
+  const { data: existingVerification } = await supabase
+    .from('saved_verifications')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('incident_session_id', cleanSessionId)
+    .maybeSingle()
+
+  if (existingVerification) {
+    return false
+  }
+
+  const verificationNote = `[AUTO_RESCUE] Auto-verified by helper proximity (${Math.round(distanceM)}m).`
+  const { error: insertVerificationError } = await supabase
+    .from('saved_verifications')
+    .insert({
+      user_id: userId,
+      incident_session_id: cleanSessionId,
+      verified_by: null,
+      evidence_type: 'auto_proximity_detection',
+      notes: verificationNote,
+      verified_at: nowIso,
+    })
+
+  if (insertVerificationError) {
+    return false
+  }
+
+  await supabase
+    .from('audit_logs')
+    .insert({
+      admin_id: null,
+      action: 'rescue_auto_verified',
+      target_user_id: userId,
+      details: {
+        incident_session_id: cleanSessionId,
+        source: 'helper_proximity',
+        distance_m: Math.round(distanceM),
+      },
+    })
+
+  return true
 }
 
 async function fetchHelperLink(
@@ -110,22 +188,56 @@ async function maybeMarkEmergencyAsRescued(
   userId: string,
   distanceM: number,
   nowIso: string
-): Promise<boolean> {
+): Promise<AutoRescueResult> {
   if (distanceM > AUTO_RESCUE_RADIUS_METERS) {
-    return false
+    return {
+      triggered: false,
+      eventId: null,
+      sessionId: null,
+      verificationCreated: false,
+    }
   }
 
-  const { data: event } = await supabase
-    .from('emergency_events')
-    .select('id, triggered_at, status, resolution_type, admin_notes')
-    .eq('user_id', userId)
-    .neq('status', 'resolved')
-    .order('triggered_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const lookbackMs = 24 * 60 * 60 * 1000
+  const lookbackIso = new Date(new Date(nowIso).getTime() - lookbackMs).toISOString()
 
+  const { data: events } = await supabase
+    .from('emergency_events')
+    .select('id, session_id, triggered_at, status, resolution_type, admin_notes')
+    .eq('user_id', userId)
+    .gte('triggered_at', lookbackIso)
+    .order('triggered_at', { ascending: false })
+    .limit(10)
+
+  const candidateEvents = (events || []) as AutoRescueEventRow[]
+
+  if (candidateEvents.length === 0) {
+    return {
+      triggered: false,
+      eventId: null,
+      sessionId: null,
+      verificationCreated: false,
+    }
+  }
+
+  const event = candidateEvents.find((item) => !hasManualResolution(item.resolution_type)) || candidateEvents[0]
   if (!event) {
-    return false
+    return {
+      triggered: false,
+      eventId: null,
+      sessionId: null,
+      verificationCreated: false,
+    }
+  }
+
+  // Respect explicit manual outcomes set by admin/user and do not override them.
+  if (hasManualResolution(event.resolution_type) && !hasAutoRescueNote(event.admin_notes)) {
+    return {
+      triggered: false,
+      eventId: event.id,
+      sessionId: event.session_id ?? event.id,
+      verificationCreated: false,
+    }
   }
 
   const triggeredAtMs = new Date(event.triggered_at).getTime()
@@ -135,7 +247,9 @@ async function maybeMarkEmergencyAsRescued(
     : null
 
   const autoNote = `[AUTO_RESCUE] Helper proximity detected within ${Math.round(distanceM)}m from live location.`
-  const mergedNotes = event.admin_notes && event.admin_notes.trim().length > 0
+  const mergedNotes = hasAutoRescueNote(event.admin_notes)
+    ? event.admin_notes
+    : event.admin_notes && event.admin_notes.trim().length > 0
     ? `${event.admin_notes}\n${autoNote}`
     : autoNote
 
@@ -152,7 +266,30 @@ async function maybeMarkEmergencyAsRescued(
     })
     .eq('id', event.id)
 
-  return !updateError
+  if (updateError) {
+    return {
+      triggered: false,
+      eventId: event.id,
+      sessionId: event.session_id ?? event.id,
+      verificationCreated: false,
+    }
+  }
+
+  const sessionId = event.session_id ?? event.id
+  const verificationCreated = await maybeCreateAutoVerification(
+    supabase,
+    userId,
+    sessionId,
+    distanceM,
+    nowIso
+  )
+
+  return {
+    triggered: true,
+    eventId: event.id,
+    sessionId,
+    verificationCreated,
+  }
 }
 
 /**
@@ -340,7 +477,7 @@ export async function POST(
 
     const helperDistanceM = distanceMeters(victimSession.lat, victimSession.lng, helperLat, helperLng)
     const withinRescueRadius = helperDistanceM <= AUTO_RESCUE_RADIUS_METERS
-    const autoRescueTriggered = await maybeMarkEmergencyAsRescued(
+    const autoRescueResult = await maybeMarkEmergencyAsRescued(
       supabase,
       helperLink.user_id,
       helperDistanceM,
@@ -358,7 +495,7 @@ export async function POST(
       helper_distance_m: helperDistanceM,
     }
 
-    if (withinRescueRadius) {
+    if (withinRescueRadius && autoRescueResult.triggered) {
       updatePayload.auto_rescue_triggered = true
       updatePayload.auto_rescue_at = nowIso
     }
@@ -396,8 +533,9 @@ export async function POST(
       helper_last_updated: nowIso,
       helper_distance_m: helperDistanceM,
       within_rescue_radius: withinRescueRadius,
-      auto_rescue_triggered: autoRescueTriggered || withinRescueRadius,
-      auto_rescue_at: withinRescueRadius ? nowIso : null,
+      auto_rescue_triggered: autoRescueResult.triggered,
+      auto_rescue_at: autoRescueResult.triggered ? nowIso : null,
+      verification_auto_created: autoRescueResult.verificationCreated,
     })
   } catch (err) {
     console.error('Track helper-location POST error:', err)

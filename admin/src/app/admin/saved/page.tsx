@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Heart, RefreshCw } from 'lucide-react'
+
+const AUTO_REFRESH_INTERVAL_MS = 15000
 
 interface Verification {
   id: string
@@ -24,18 +26,26 @@ export default function SavedPage() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     const res = await fetch('/api/admin/saved')
     const data = await res.json()
     setVerifications(data.verifications || [])
     setTotal(data.total || 0)
     setLoading(false)
-  }
+  }, [])
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [fetchData])
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      fetchData()
+    }, AUTO_REFRESH_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
+  }, [fetchData])
 
   const formatDate = (value: string) =>
     new Date(value).toLocaleString('en-IN', {

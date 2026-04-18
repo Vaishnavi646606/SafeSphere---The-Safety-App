@@ -207,7 +207,7 @@ async function maybeMarkEmergencyAsRescued(
     .eq('user_id', userId)
     .gte('triggered_at', lookbackIso)
     .order('triggered_at', { ascending: false })
-    .limit(10)
+    .limit(1)
 
   const candidateEvents = (events || []) as AutoRescueEventRow[]
 
@@ -220,12 +220,21 @@ async function maybeMarkEmergencyAsRescued(
     }
   }
 
-  const event = candidateEvents.find((item) => !hasManualResolution(item.resolution_type)) || candidateEvents[0]
+  const event = candidateEvents[0]
   if (!event) {
     return {
       triggered: false,
       eventId: null,
       sessionId: null,
+      verificationCreated: false,
+    }
+  }
+
+  if (hasAutoRescueNote(event.admin_notes)) {
+    return {
+      triggered: true,
+      eventId: event.id,
+      sessionId: event.session_id ?? event.id,
       verificationCreated: false,
     }
   }
@@ -477,12 +486,26 @@ export async function POST(
 
     const helperDistanceM = distanceMeters(victimSession.lat, victimSession.lng, helperLat, helperLng)
     const withinRescueRadius = helperDistanceM <= AUTO_RESCUE_RADIUS_METERS
-    const autoRescueResult = await maybeMarkEmergencyAsRescued(
-      supabase,
-      helperLink.user_id,
-      helperDistanceM,
-      nowIso
-    )
+    const alreadyAutoRescueTriggered = Boolean(helperLink.auto_rescue_triggered)
+
+    let autoRescueResult: AutoRescueResult = {
+      triggered: false,
+      eventId: null,
+      sessionId: null,
+      verificationCreated: false,
+    }
+
+    if (withinRescueRadius && !alreadyAutoRescueTriggered) {
+      autoRescueResult = await maybeMarkEmergencyAsRescued(
+        supabase,
+        helperLink.user_id,
+        helperDistanceM,
+        nowIso
+      )
+    }
+
+    const finalAutoRescueTriggered = alreadyAutoRescueTriggered || autoRescueResult.triggered
+    const finalAutoRescueAt = helperLink.auto_rescue_at ?? (autoRescueResult.triggered ? nowIso : null)
 
     const updatePayload: Record<string, unknown> = {
       opened_at: helperLink.opened_at ?? nowIso,
@@ -495,7 +518,7 @@ export async function POST(
       helper_distance_m: helperDistanceM,
     }
 
-    if (withinRescueRadius && autoRescueResult.triggered) {
+    if (withinRescueRadius && !alreadyAutoRescueTriggered && autoRescueResult.triggered) {
       updatePayload.auto_rescue_triggered = true
       updatePayload.auto_rescue_at = nowIso
     }
@@ -533,8 +556,8 @@ export async function POST(
       helper_last_updated: nowIso,
       helper_distance_m: helperDistanceM,
       within_rescue_radius: withinRescueRadius,
-      auto_rescue_triggered: autoRescueResult.triggered,
-      auto_rescue_at: autoRescueResult.triggered ? nowIso : null,
+      auto_rescue_triggered: finalAutoRescueTriggered,
+      auto_rescue_at: finalAutoRescueAt,
       verification_auto_created: autoRescueResult.verificationCreated,
     })
   } catch (err) {

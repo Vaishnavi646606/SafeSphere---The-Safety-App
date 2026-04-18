@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     { count: feedbackCount },
     { count: realEmergencies },
     { count: usersRescued },
-    { count: autoRescues },
+    { data: autoRescueRows },
     { count: verifiedRescues },
     { data: ratingsRaw },
     { data: dailyEventsRaw },
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }).eq('was_rescued_or_helped', true).gte('submitted_at', since),
     serviceClient
       .from('emergency_events')
-      .select('*', { count: 'exact', head: true })
+      .select('user_id')
       .eq('resolution_type', 'safe_contact')
       .ilike('admin_notes', '%[AUTO_RESCUE]%')
       .gte('triggered_at', since),
@@ -85,6 +85,11 @@ export async function GET(req: NextRequest) {
 
   const usersTrend = computeTrend(usersCurrent || 0, usersPrevious || 0)
   const incidentsTrend = computeTrend(incidentsCurrent || 0, incidentsPrevious || 0)
+  const autoRescues = new Set(
+    (autoRescueRows || [])
+      .map((row: any) => (typeof row?.user_id === 'string' ? row.user_id : null))
+      .filter((value: string | null): value is string => Boolean(value))
+  ).size
 
   const dailyGrouped: Record<string, number> = {}
   ;(dailyEventsRaw || []).forEach((e: any) => {
@@ -129,7 +134,7 @@ export async function GET(req: NextRequest) {
       feedback_received: feedbackCount || 0,
       real_emergencies: realEmergencies || 0,
       users_rescued: usersRescued || 0,
-      auto_rescues: autoRescues || 0,
+      auto_rescues: autoRescues,
       verified_rescues: verifiedRescues || 0,
       incidents_call_connected: callsAnswered || 0,
       avg_rating: avgRating,

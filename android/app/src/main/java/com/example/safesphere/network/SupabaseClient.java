@@ -584,7 +584,7 @@ public class SupabaseClient {
         }
 
         try {
-            String apiBase = normalizeApiBase(BuildConfig.VERCEL_BASE_URL);
+            String apiBase = resolveHelperApiBase();
             if (apiBase == null || apiBase.isEmpty()) {
                 Log.w(TAG, "generateHelperTrackingLinks: VERCEL_BASE_URL missing");
                 return linksByContact;
@@ -654,6 +654,22 @@ public class SupabaseClient {
             return base;
         }
         return base + "/api";
+    }
+
+    private String resolveHelperApiBase() {
+        String configuredBase = normalizeApiBase(BuildConfig.VERCEL_BASE_URL);
+        if (configuredBase != null
+                && configuredBase.startsWith("https://")) {
+            return configuredBase;
+        }
+
+        String productionBase = normalizeApiBase(BuildConfig.TRACKING_BASE_URL);
+        if (productionBase != null && productionBase.startsWith("https://")) {
+            Log.w(TAG, "resolveHelperApiBase: falling back to TRACKING_BASE_URL for helper links");
+            return productionBase;
+        }
+
+        return configuredBase;
     }
 
     private void ensureUserLiveLocationToken(String userId, String token) {

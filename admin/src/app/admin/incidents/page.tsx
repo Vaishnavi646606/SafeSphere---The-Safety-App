@@ -408,19 +408,6 @@ export default function IncidentsPage() {
                                 {isAutoRescued && incident.auto_rescue_helper_at ? (
                                   <p>Helper rescue time: {formatDate(incident.auto_rescue_helper_at)}</p>
                                 ) : null}
-                                {isAutoRescued && incident.auto_rescue_helper_url ? (
-                                  <p>
-                                    Helper tracking link:{' '}
-                                    <a
-                                      href={incident.auto_rescue_helper_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-cyan-300 underline decoration-cyan-600/40 underline-offset-2 hover:text-cyan-200"
-                                    >
-                                      Open link
-                                    </a>
-                                  </p>
-                                ) : null}
                                 <p>Time triggered: {formatDate(incident.triggered_at)}</p>
                                 <p>Time resolved: {formatDate(incident.resolved_at)}</p>
                                 <p>Battery: {incident.phone_battery_percent !== null ? `${incident.phone_battery_percent}%` : 'Unknown'}</p>

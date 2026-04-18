@@ -76,9 +76,33 @@ export async function POST(request: NextRequest) {
       }) as ExistingHelperLinkRow | undefined
 
       if (existingLink?.token) {
+        // Reusing token for a fresh incident: clear helper proximity state and extend validity.
+        const { error: reuseUpdateError } = await supabase
+          .from('emergency_helper_links')
+          .update({
+            expires_at: expiresAt,
+            is_active: true,
+            opened_at: null,
+            last_opened_at: null,
+            open_count: 0,
+            helper_lat: null,
+            helper_lng: null,
+            helper_accuracy: null,
+            helper_last_updated: null,
+            helper_distance_m: null,
+            auto_rescue_triggered: false,
+            auto_rescue_at: null,
+          })
+          .eq('id', existingLink.id)
+
+        if (reuseUpdateError) {
+          console.error('helper-links reuse update error', reuseUpdateError)
+          return NextResponse.json({ success: false, error: 'Failed to refresh helper links' }, { status: 500 })
+        }
+
         links.push({
           slot: existingLink.contact_slot,
-          contact_number: existingLink.contact_number,
+          contact_number: contact.phone.trim(),
           token: existingLink.token,
           url: `${origin}/track/${existingLink.token}`,
           reused: true,

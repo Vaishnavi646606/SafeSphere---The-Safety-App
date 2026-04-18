@@ -5,8 +5,6 @@ import { AlertTriangle, ChevronDown, ChevronUp, RefreshCw, Search } from 'lucide
 import StatusBadge from '@/components/StatusBadge'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 
-const AUTO_REFRESH_INTERVAL_MS = 15000
-
 interface Incident {
   id: string
   user_id: string
@@ -168,14 +166,6 @@ export default function IncidentsPage() {
 
   useEffect(() => {
     fetchIncidents()
-  }, [fetchIncidents])
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      fetchIncidents()
-    }, AUTO_REFRESH_INTERVAL_MS)
-
-    return () => window.clearInterval(intervalId)
   }, [fetchIncidents])
 
   const filteredIncidents = useMemo(() => {

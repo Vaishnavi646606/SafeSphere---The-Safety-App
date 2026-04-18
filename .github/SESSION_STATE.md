@@ -21,6 +21,9 @@ Supabase: live_location_sessions active. One permanent token per user.
 Policy: Expiry extends ONLY on emergency trigger, not on 3-min background refresh.
 UI Note: "Location reported" time is phone-upload age; it can be delayed even when page refresh is recent.
 Fix Note: Literal token values like "null" are now sanitized; users token is synced during live upsert.
+New: per-contact helper links (3 unique tokens) generated server-side before SMS dispatch.
+Required SQL: run admin/supabase_helper_links.sql once.
+Update: helper-link API now reuses an existing active/unexpired link for the same contact slot + number.
 
 ## Completed This Session
 - [x] STEP 0: SQL — live_location_token column + indexes + RLS policies

@@ -12,8 +12,10 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 import okhttp3.MediaType;
@@ -569,6 +571,89 @@ public class SupabaseClient {
             Log.e(TAG, "extendLiveLocationExpiry: exception", e);
             return new SupabaseResponse(0, false, e.getMessage());
         }
+    }
+
+    /**
+     * Generate 3 unique helper tracking links on server side and map them by contact number.
+     * Returns empty map if generation fails.
+     */
+    public Map<String, String> generateHelperTrackingLinks(String userId, String[] contacts) {
+        Map<String, String> linksByContact = new HashMap<>();
+        if (userId == null || userId.trim().isEmpty() || contacts == null || contacts.length == 0) {
+            return linksByContact;
+        }
+
+        try {
+            String apiBase = normalizeApiBase(BuildConfig.VERCEL_BASE_URL);
+            if (apiBase == null || apiBase.isEmpty()) {
+                Log.w(TAG, "generateHelperTrackingLinks: VERCEL_BASE_URL missing");
+                return linksByContact;
+            }
+
+            JSONObject body = new JSONObject();
+            body.put("user_id", userId.trim());
+            JSONArray contactArr = new JSONArray();
+            for (int i = 0; i < Math.min(contacts.length, 3); i++) {
+                String number = contacts[i];
+                if (number == null || number.trim().isEmpty()) continue;
+
+                JSONObject item = new JSONObject();
+                item.put("slot", i + 1);
+                item.put("phone", number.trim());
+                contactArr.put(item);
+            }
+            body.put("contacts", contactArr);
+
+            Request request = new Request.Builder()
+                    .url(apiBase + "/emergency/helper-links")
+                    .header("Content-Type", "application/json")
+                    .post(RequestBody.create(body.toString(), JSON))
+                    .build();
+
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful() || response.body() == null) {
+                    Log.w(TAG, "generateHelperTrackingLinks failed: code=" + response.code());
+                    return linksByContact;
+                }
+
+                String responseText = response.body().string();
+                JSONObject json = new JSONObject(responseText);
+                JSONArray links = json.optJSONArray("links");
+                if (links == null) {
+                    return linksByContact;
+                }
+
+                for (int i = 0; i < links.length(); i++) {
+                    JSONObject row = links.optJSONObject(i);
+                    if (row == null) continue;
+
+                    String contactNumber = row.optString("contact_number", "").trim();
+                    String url = row.optString("url", "").trim();
+                    if (!contactNumber.isEmpty() && !url.isEmpty()) {
+                        linksByContact.put(contactNumber, url);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "generateHelperTrackingLinks exception", e);
+        }
+
+        return linksByContact;
+    }
+
+    private String normalizeApiBase(String configuredBase) {
+        if (configuredBase == null) return null;
+        String base = configuredBase.trim();
+        if (base.isEmpty()) return null;
+
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+
+        if (base.endsWith("/api")) {
+            return base;
+        }
+        return base + "/api";
     }
 
     private void ensureUserLiveLocationToken(String userId, String token) {

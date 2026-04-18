@@ -43,7 +43,9 @@ import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TimeZone;
 import java.util.UUID;
 
@@ -376,14 +378,27 @@ public class EmergencyManager {
         Log.d(TAG, "│ Step 1: Sending SMS to all contacts            │");
         Log.d(TAG, "└─────────────────────────────────────────────────┘");
         Log.i(TAG, FLOW + "_SMS_START");
-        sendSmsWithBestLocation(ctx, numbers);
-        Log.i(TAG, FLOW + "_SMS_DONE");
-        // ── Analytics: SMS_SENT event ──
-        String sessionId = Prefs.getSessionId(ctx);
-        java.util.Map<String, Object> smsPayload = new java.util.HashMap<>();
-        smsPayload.put("recipient_count", (int) java.util.Arrays.stream(numbers).filter(n -> n != null && !n.trim().isEmpty()).count());
-        AnalyticsQueue.get(ctx).enqueue(EventType.SMS_SENT, sessionId, smsPayload);
+        prepareLinksAndSendSms(ctx, numbers, () -> {
+            Log.i(TAG, FLOW + "_SMS_DONE");
+            // ── Analytics: SMS_SENT event ──
+            String sessionId = Prefs.getSessionId(ctx);
+            java.util.Map<String, Object> smsPayload = new java.util.HashMap<>();
+            smsPayload.put("recipient_count", (int) java.util.Arrays.stream(numbers).filter(n -> n != null && !n.trim().isEmpty()).count());
+            AnalyticsQueue.get(ctx).enqueue(EventType.SMS_SENT, sessionId, smsPayload);
 
+            startCallSequenceAfterSms(ctx);
+        });
+
+        // 3. Schedule live location updates - DISABLED to prevent duplicate SMS
+        // Initial SMS already contains location. Live update would send 3 more SMS after 60s.
+        // if (liveMode) { scheduleLiveLocation(ctx, numbers); }
+        
+        Log.d(TAG, "╔═══════════════════════════════════════════════════╗");
+        Log.d(TAG, "║         sendEmergency() COMPLETE                  ║");
+        Log.d(TAG, "╚═══════════════════════════════════════════════════╝");
+    }
+
+    private static void startCallSequenceAfterSms(Context ctx) {
         // 2. Start calling sequence (small delay so SMS dispatch starts first)
         Log.d(TAG, "┌─────────────────────────────────────────────────┐");
         Log.d(TAG, "│ Step 2: Starting call sequence                  │");
@@ -395,14 +410,47 @@ public class EmergencyManager {
             Log.d(TAG, "No valid call targets selected; finishing after SMS dispatch");
             notifySequenceComplete(ctx);
         }
+    }
 
-        // 3. Schedule live location updates - DISABLED to prevent duplicate SMS
-        // Initial SMS already contains location. Live update would send 3 more SMS after 60s.
-        // if (liveMode) { scheduleLiveLocation(ctx, numbers); }
-        
-        Log.d(TAG, "╔═══════════════════════════════════════════════════╗");
-        Log.d(TAG, "║         sendEmergency() COMPLETE                  ║");
-        Log.d(TAG, "╚═══════════════════════════════════════════════════╝");
+    private static void prepareLinksAndSendSms(Context ctx, String[] numbers, Runnable onDone) {
+        new Thread(() -> {
+            Map<String, String> helperLinks = new HashMap<>();
+            try {
+                String userId = Prefs.getSupabaseUserId(ctx);
+                if (userId == null || userId.trim().isEmpty()) {
+                    SupabaseClient client = SupabaseClient.getInstance(ctx);
+                    String userPhone = Prefs.getUserPhone(ctx);
+                    JSONObject user = client.getUserByPhone(userPhone);
+                    userId = user == null ? null : user.optString("id", null);
+                    if (userId != null && !userId.trim().isEmpty()) {
+                        Prefs.setSupabaseUserId(ctx, userId.trim());
+                    }
+                }
+
+                if (userId != null && !userId.trim().isEmpty()) {
+                    SupabaseClient client = SupabaseClient.getInstance(ctx);
+                    Map<String, String> generated = client.generateHelperTrackingLinks(userId.trim(), numbers);
+                    if (generated != null && !generated.isEmpty()) {
+                        for (Map.Entry<String, String> entry : generated.entrySet()) {
+                            helperLinks.put(normalizePhoneKey(entry.getKey()), entry.getValue());
+                        }
+                        Log.d(TAG, "Generated per-contact helper links: " + helperLinks.size());
+                    } else {
+                        Log.w(TAG, "Per-contact helper links unavailable — fallback to shared token link");
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "prepareLinksAndSendSms: helper link generation failed", e);
+            }
+
+            Map<String, String> finalHelperLinks = helperLinks;
+            new Handler(Looper.getMainLooper()).post(() -> {
+                sendSmsWithBestLocation(ctx, numbers, finalHelperLinks);
+                if (onDone != null) {
+                    onDone.run();
+                }
+            });
+        }, "helper-links-before-sms").start();
     }
 
     private static int getBatteryPercent(Context ctx) {
@@ -428,7 +476,7 @@ public class EmergencyManager {
     //  LOCATION + SMS
     // ================================================================
 
-    private static void sendSmsWithBestLocation(Context ctx, String[] numbers) {
+    private static void sendSmsWithBestLocation(Context ctx, String[] numbers, Map<String, String> contactTrackingUrls) {
         boolean hasFine = ActivityCompat.checkSelfPermission(ctx,
                 Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED;
@@ -447,7 +495,7 @@ public class EmergencyManager {
                     if (best != null) {
                         rememberLastKnownLocation(ctx, best);
                         String mapsUrl = mapsLink(best);
-                        String trackingUrl = (trackingToken != null
+                        String defaultTrackingUrl = (trackingToken != null
                             && !trackingToken.trim().isEmpty())
                             ? com.example.safesphere.BuildConfig.TRACKING_BASE_URL
                                 + "/track/" + trackingToken.trim()
@@ -458,11 +506,7 @@ public class EmergencyManager {
                                 best.getLatitude(),
                                 best.getLongitude(),
                                 best.hasAccuracy() ? best.getAccuracy() : 0f);
-                        String smsBody = "🚨 Emergency Alert! This person may be in danger. "
-                            + "Please try to contact them immediately.\n"
-                            + "📍 Last Known Location: " + mapsUrl + "\n"
-                            + "🔴 Live Tracking: " + trackingUrl;
-                        sendSmsToAll(ctx, numbers, smsBody);
+                        sendEmergencySmsToAll(ctx, numbers, mapsUrl, defaultTrackingUrl, null, contactTrackingUrls);
                         return;
                     }
                 }
@@ -476,18 +520,14 @@ public class EmergencyManager {
             long timeMs = Prefs.getLastKnownLocationTime(ctx);
             String age = getLocationAgeText(timeMs);
             String mapsUrl = "https://maps.google.com/?q=" + lat + "," + lng;
-            String trackingUrl = (trackingToken != null
+            String defaultTrackingUrl = (trackingToken != null
                 && !trackingToken.trim().isEmpty())
                 ? com.example.safesphere.BuildConfig.TRACKING_BASE_URL
                     + "/track/" + trackingToken.trim()
                 : mapsUrl;
             ensureLiveSessionActiveForEmergency(ctx, trackingToken, lat, lng, 0f);
-            String smsBody = "🚨 Emergency Alert! This person may be in danger. "
-                + "Please try to contact them immediately.\n"
-                + "📍 Last Known Location (" + age + "): " + mapsUrl + "\n"
-                + "🔴 Live Tracking: " + trackingUrl;
             Log.d(TAG, "SMS using stored location fallback with tracking URL");
-            sendSmsToAll(ctx, numbers, smsBody);
+            sendEmergencySmsToAll(ctx, numbers, mapsUrl, defaultTrackingUrl, age, contactTrackingUrls);
             return;
         }
 
@@ -498,14 +538,72 @@ public class EmergencyManager {
                 ? com.example.safesphere.BuildConfig.TRACKING_BASE_URL
                         + "/track/" + fallbackToken.trim()
                 : null;
-            String noLocBody = "🚨 Emergency Alert! This person may be in danger. "
-                + "Please try to contact them immediately.\n"
-                + "📍 Location: Not available — GPS may be off.\n"
-                    + (fallbackTrackingUrl != null
-                        ? "🔴 Live Tracking: " + fallbackTrackingUrl
-                    : "⚠️ Please ask them to enable GPS.");
             Log.w(TAG, "No location available for SMS — tracking URL included if token available");
-            sendSmsToAll(ctx, numbers, noLocBody);
+            sendEmergencySmsNoLocation(ctx, numbers, fallbackTrackingUrl, contactTrackingUrls);
+    }
+
+    private static void sendEmergencySmsToAll(
+            Context ctx,
+            String[] numbers,
+            String mapsUrl,
+            String defaultTrackingUrl,
+            String locationAge,
+            Map<String, String> contactTrackingUrls) {
+        if (numbers == null) return;
+        for (String number : numbers) {
+            if (number == null || number.trim().isEmpty()) continue;
+
+            String trackingUrl = resolveTrackingUrl(number, contactTrackingUrls, defaultTrackingUrl);
+            String locationLine = (locationAge == null || locationAge.trim().isEmpty())
+                    ? "📍 Last Known Location: " + mapsUrl
+                    : "📍 Last Known Location (" + locationAge + "): " + mapsUrl;
+            String smsBody = "🚨 Emergency Alert! This person may be in danger. "
+                    + "Please try to contact them immediately.\n"
+                    + locationLine + "\n"
+                    + "🔴 Live Tracking: " + trackingUrl;
+            sendSms(ctx, number.trim(), smsBody);
+        }
+    }
+
+    private static void sendEmergencySmsNoLocation(
+            Context ctx,
+            String[] numbers,
+            String fallbackTrackingUrl,
+            Map<String, String> contactTrackingUrls) {
+        if (numbers == null) return;
+        for (String number : numbers) {
+            if (number == null || number.trim().isEmpty()) continue;
+
+            String trackingUrl = resolveTrackingUrl(number, contactTrackingUrls, fallbackTrackingUrl);
+            String body = "🚨 Emergency Alert! This person may be in danger. "
+                    + "Please try to contact them immediately.\n"
+                    + "📍 Location: Not available — GPS may be off.\n"
+                    + (trackingUrl != null
+                        ? "🔴 Live Tracking: " + trackingUrl
+                        : "⚠️ Please ask them to enable GPS.");
+            sendSms(ctx, number.trim(), body);
+        }
+    }
+
+    private static String resolveTrackingUrl(String number, Map<String, String> contactTrackingUrls, String fallbackUrl) {
+        if (contactTrackingUrls == null || contactTrackingUrls.isEmpty()) {
+            return fallbackUrl;
+        }
+        String key = normalizePhoneKey(number);
+        if (key == null || key.isEmpty()) {
+            return fallbackUrl;
+        }
+        String url = contactTrackingUrls.get(key);
+        return (url != null && !url.trim().isEmpty()) ? url.trim() : fallbackUrl;
+    }
+
+    private static String normalizePhoneKey(String number) {
+        if (number == null) return "";
+        String digits = number.replaceAll("\\D", "");
+        if (digits.length() > 10) {
+            digits = digits.substring(digits.length() - 10);
+        }
+        return digits;
     }
 
     private static String ensureTrackingToken(Context ctx) {

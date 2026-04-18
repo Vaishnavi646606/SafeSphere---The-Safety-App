@@ -48,6 +48,14 @@ interface FeedbackItem {
   submitted_at: string
 }
 
+interface VerificationItem {
+  id: string
+  incident_session_id: string
+  evidence_type: string
+  notes: string | null
+  verified_at: string
+}
+
 interface LiveSession {
   found: boolean
   lat?: number
@@ -65,6 +73,7 @@ export default function UserDetailPage() {
   const [user, setUser] = useState<UserDetail | null>(null)
   const [emergencies, setEmergencies] = useState<EmergencyEvent[]>([])
   const [feedback, setFeedback] = useState<FeedbackItem[]>([])
+  const [verifications, setVerifications] = useState<VerificationItem[]>([])
   const [liveSession, setLiveSession] = useState<LiveSession | null>(null)
   const [liveLoading, setLiveLoading] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -89,6 +98,7 @@ export default function UserDetailPage() {
       setUser(data.user || null)
       setEmergencies(data.emergencies || [])
       setFeedback(data.feedback || [])
+      setVerifications(data.verifications || [])
     } catch (error) {
       console.error('Failed to fetch user data:', error)
     } finally {
@@ -155,9 +165,10 @@ export default function UserDetailPage() {
     const rescued = emergencies.filter((event) => event.resolution_type === 'rescued' || event.resolution_type === 'safe_contact').length
     const falseAlarms = emergencies.filter((event) => event.resolution_type === 'false_alarm').length
     const reviewedNeeded = emergencies.filter((event) => event.requires_admin_review === true).length
+    const verifiedRescues = verifications.length
 
-    return { total, rescued, falseAlarms, reviewedNeeded }
-  }, [emergencies])
+    return { total, rescued, falseAlarms, reviewedNeeded, verifiedRescues }
+  }, [emergencies, verifications])
 
 const avgRating = useMemo(() => {
   if (feedback.length === 0) return 0
@@ -249,6 +260,7 @@ const avgRating = useMemo(() => {
             <p>Total Emergencies: {user.total_emergencies || 0}</p>
             <p>Recent Records Loaded: {stats.total}</p>
             <p>Rescued/Safe: {stats.rescued}</p>
+            <p>Verified Rescues: {stats.verifiedRescues}</p>
             <p>False Alarms: {stats.falseAlarms}</p>
             <p>Requires Review: {stats.reviewedNeeded}</p>
           </div>
@@ -326,8 +338,49 @@ const avgRating = useMemo(() => {
             >
               Open in Google Maps
             </a>
+            <div className="overflow-hidden rounded-xl border border-white/5 bg-[#16171f]">
+              <iframe
+                title="Live location map preview"
+                src={`https://www.google.com/maps?q=${liveSession.lat},${liveSession.lng}&z=16&output=embed`}
+                className="h-72 w-full"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            </div>
           </div>
         )}
+      </div>
+
+      <div className="rounded-2xl border border-white/5 bg-[#12121a] p-6 shadow-lg shadow-black/20">
+        <h3 className="text-xl font-semibold text-white">Rescue Verification</h3>
+        <p className="mt-1 text-sm text-gray-500">Manual confirmations saved by admins and feedback marked as helped.</p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="rounded-xl border border-white/5 bg-[#16171f] p-4 text-sm text-gray-300">
+            <p className="text-xs uppercase tracking-wider text-gray-500">Manual verifications</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{verifications.length}</p>
+            <p className="mt-1 text-xs text-gray-500">Saved rescue confirmations for this user.</p>
+          </div>
+          <div className="rounded-xl border border-white/5 bg-[#16171f] p-4 text-sm text-gray-300">
+            <p className="text-xs uppercase tracking-wider text-gray-500">Feedback helped</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{feedback.filter((item) => item.was_rescued_or_helped === true).length}</p>
+            <p className="mt-1 text-xs text-gray-500">User feedback that says help was received.</p>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {verifications.length === 0 ? (
+            <p className="text-sm text-gray-500">No manual rescue verification has been saved yet.</p>
+          ) : (
+            verifications.map((item) => (
+              <div key={item.id} className="rounded-xl border border-white/5 bg-[#16171f] p-4 text-sm text-gray-300">
+                <p className="font-medium text-white">{item.evidence_type.replace(/_/g, ' ')}</p>
+                <p className="mt-1 text-xs text-gray-500">Verified at {formatDate(item.verified_at)}</p>
+                <p className="mt-1 text-xs text-gray-500">Session: {item.incident_session_id}</p>
+                <p className="mt-2 text-slate-400">{item.notes || 'No notes provided'}</p>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       <div className="rounded-2xl border border-white/5 bg-[#12121a] p-6 shadow-lg shadow-black/20">

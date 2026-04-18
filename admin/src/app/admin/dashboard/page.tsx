@@ -38,6 +38,7 @@ interface Metrics {
   feedback_received: number
   real_emergencies: number
   users_rescued: number
+  verified_rescues: number
   incidents_call_connected: number
   avg_rating: number
   events_last_24h: number
@@ -153,9 +154,10 @@ export default function DashboardPage() {
         />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-4">
+      <section className="grid gap-4 lg:grid-cols-5">
         <StatsCard label="Real Emergencies" value={metrics?.real_emergencies ?? 0} icon={AlertTriangle} color="#f43f5e" subtitle="Confirmed by user" loading={loading} />
         <StatsCard label="Users Rescued" value={metrics?.users_rescued ?? 0} icon={Heart} color="#10b981" subtitle="Help received" loading={loading} />
+        <StatsCard label="Verified Rescues" value={metrics?.verified_rescues ?? 0} icon={Heart} color="#22c55e" subtitle="Manual confirmation" loading={loading} />
         <StatsCard label="Call Connected" value={metrics?.incidents_call_connected ?? 0} icon={Phone} color="#3b82f6" loading={loading} />
         <StatsCard label="Avg Rating" value={metrics?.avg_rating ?? 0} icon={Star} color="#f59e0b" subtitle="Out of 5" loading={loading} />
       </section>

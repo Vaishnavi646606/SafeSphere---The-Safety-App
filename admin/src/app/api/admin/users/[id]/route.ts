@@ -93,7 +93,30 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: feedbackError.message }, { status: 500 })
     }
 
-    return NextResponse.json({ user, emergencies: emergencies || [], feedback: feedback || [] })
+    const { data: verifications, error: verificationsError } = await serviceClient
+      .from('saved_verifications')
+      .select(`
+        id,
+        incident_session_id,
+        evidence_type,
+        notes,
+        verified_at,
+        verified_by
+      `)
+      .eq('user_id', id)
+      .order('verified_at', { ascending: false })
+      .limit(10)
+
+    if (verificationsError) {
+      return NextResponse.json({ error: verificationsError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      user,
+      emergencies: emergencies || [],
+      feedback: feedback || [],
+      verifications: verifications || []
+    })
   } catch (error) {
     console.error('GET /api/admin/users/[id] error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

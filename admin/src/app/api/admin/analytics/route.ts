@@ -92,11 +92,17 @@ export async function GET(req: NextRequest) {
       .from('emergency_feedback')
       .select('rating, was_real_emergency, was_rescued_or_helped')
       .gte('submitted_at', since)
+
+    const { data: verificationData } = await db
+      .from('saved_verifications')
+      .select('id, verified_at')
+      .gte('verified_at', since)
     
     let avgRating = 0
     let realEmergencyPercent = 0
     let rescuedPercent = 0
     const feedbackCount = feedbackData?.length || 0
+    const verifiedRescueCount = verificationData?.length || 0
     
     if (feedbackData && feedbackData.length > 0) {
       const sumRating = feedbackData.reduce((acc: number, f: any) => acc + (f.rating || 0), 0)
@@ -137,7 +143,8 @@ export async function GET(req: NextRequest) {
         total_calls_made: callsMade,
         successful_outcomes: successful,
         response_rate: responseRate,
-        avg_response_time: avgResponseTime
+        avg_response_time: avgResponseTime,
+        verified_rescues: verifiedRescueCount
       },
       metrics: {
         first_contact_answer_rate: totalWithAnswer > 0 
@@ -149,6 +156,7 @@ export async function GET(req: NextRequest) {
         avg_feedback_rating: avgRating,
         real_emergency_percent: realEmergencyPercent,
         rescued_percent: rescuedPercent,
+        verified_rescues: verifiedRescueCount,
         feedback_submissions: feedbackCount,
         user_retention: totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 100) : 0
       },

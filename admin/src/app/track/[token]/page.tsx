@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams } from 'next/navigation'
-import { MapPin, RefreshCw, AlertCircle, Clock } from 'lucide-react'
+import { MapPin, RefreshCw, AlertCircle, Clock, Navigation } from 'lucide-react'
 
 interface LiveLocationData {
   lat: number
@@ -12,18 +12,35 @@ interface LiveLocationData {
   display_name: string
   is_active: boolean
   found: boolean
+  helper_contact_slot?: number
+  helper_contact_number?: string
+  helper_lat?: number | null
+  helper_lng?: number | null
+  helper_accuracy?: number | null
+  helper_last_updated?: string | null
+  helper_distance_m?: number | null
+  within_rescue_radius?: boolean
+  auto_rescue_triggered?: boolean
+  auto_rescue_at?: string | null
 }
+
+type HelperPermissionState = 'idle' | 'requesting' | 'granted' | 'denied' | 'unsupported'
+
+const REFRESH_INTERVAL_MS = 180000
+const RESCUE_RADIUS_METERS = 50
 
 export default function TrackingPage() {
   const params = useParams()
   const token = params.token as string
-  const REFRESH_INTERVAL_MS = 180000
 
   const [data, setData] = useState<LiveLocationData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [mapLoaded, setMapLoaded] = useState(false)
+  const [leafletReady, setLeafletReady] = useState(false)
+  const [helperPermission, setHelperPermission] = useState<HelperPermissionState>('idle')
+  const [helperSyncError, setHelperSyncError] = useState<string | null>(null)
+  const helperWatchRef = useRef<number | null>(null)
 
   const getAgeText = (isoString: string): string => {
     const diffMs = Date.now() - new Date(isoString).getTime()
@@ -43,6 +60,20 @@ export default function TrackingPage() {
     return '#ef4444'
   }
 
+  const getPermissionText = (value: HelperPermissionState): string => {
+    if (value === 'requesting') return 'Requesting helper location permission...'
+    if (value === 'granted') return 'Helper live location sharing is active'
+    if (value === 'denied') return 'Location permission denied by helper'
+    if (value === 'unsupported') return 'Geolocation is not supported on this browser'
+    return 'Waiting to request helper location'
+  }
+
+  const getDistanceText = (distanceMeters: number): string => {
+    if (!Number.isFinite(distanceMeters)) return 'Unknown distance'
+    if (distanceMeters < 1000) return `${Math.round(distanceMeters)}m`
+    return `${(distanceMeters / 1000).toFixed(2)}km`
+  }
+
   const fetchLocation = useCallback(async (isManual = false) => {
     if (!token) return
     if (isManual) setIsRefreshing(true)
@@ -53,7 +84,7 @@ export default function TrackingPage() {
         setError(json.error || 'Failed to load location')
         setData(null)
       } else {
-        setData(json)
+        setData(json as LiveLocationData)
         setError(null)
       }
     } catch {
@@ -61,6 +92,29 @@ export default function TrackingPage() {
     } finally {
       setLoading(false)
       if (isManual) setIsRefreshing(false)
+    }
+  }, [token])
+
+  const syncHelperLocation = useCallback(async (lat: number, lng: number, accuracy: number) => {
+    if (!token) return
+
+    try {
+      const response = await fetch(`/api/track/${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat, lng, accuracy }),
+      })
+
+      const payload = await response.json()
+      if (!response.ok) {
+        setHelperSyncError(payload?.error || 'Could not sync helper location')
+        return
+      }
+
+      setHelperSyncError(null)
+      setData(payload as LiveLocationData)
+    } catch {
+      setHelperSyncError('Could not sync helper location')
     }
   }, [token])
 
@@ -72,9 +126,14 @@ export default function TrackingPage() {
   }, [fetchLocation])
 
   useEffect(() => {
-    if (!data || !data.found || !data.is_active || mapLoaded) return
+    if (typeof window === 'undefined') return
+
     const L = (window as any).L
-    if (L) { initMap(L, data.lat, data.lng); setMapLoaded(true); return }
+    if (L) {
+      setLeafletReady(true)
+      return
+    }
+
     if (!document.getElementById('leaflet-css')) {
       const link = document.createElement('link')
       link.id = 'leaflet-css'
@@ -82,40 +141,173 @@ export default function TrackingPage() {
       link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
       document.head.appendChild(link)
     }
+
+    if (document.getElementById('leaflet-js')) return
+
     const script = document.createElement('script')
+    script.id = 'leaflet-js'
     script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
-    script.onload = () => { initMap((window as any).L, data.lat, data.lng); setMapLoaded(true) }
+    script.onload = () => setLeafletReady(true)
     document.head.appendChild(script)
-  }, [data, mapLoaded])
+  }, [])
+
+  const initOrUpdateMap = useCallback((payload: LiveLocationData) => {
+    if (typeof window === 'undefined') return
+
+    const L = (window as any).L
+    if (!L) return
+
+    let map = (window as any)._safesphereMap
+    if (!map) {
+      map = L.map('safesphere-map').setView([payload.lat, payload.lng], 16)
+      ;(window as any)._safesphereMap = map
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19,
+      }).addTo(map)
+    }
+
+    const victimLatLng = L.latLng(payload.lat, payload.lng)
+    const victimIcon = L.divIcon({
+      className: '',
+      html: '<div style="width:20px;height:20px;background:#ef4444;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 3px #ef444466;"></div>',
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
+    })
+
+    let victimMarker = (window as any)._safesphereVictimMarker
+    if (!victimMarker) {
+      victimMarker = L.marker(victimLatLng, { icon: victimIcon }).addTo(map)
+      ;(window as any)._safesphereVictimMarker = victimMarker
+    } else {
+      victimMarker.setLatLng(victimLatLng)
+    }
+
+    let rescueCircle = (window as any)._safesphereRescueCircle
+    if (!rescueCircle) {
+      rescueCircle = L.circle(victimLatLng, {
+        radius: RESCUE_RADIUS_METERS,
+        color: '#22c55e',
+        weight: 1,
+        fillColor: '#22c55e',
+        fillOpacity: 0.1,
+      }).addTo(map)
+      ;(window as any)._safesphereRescueCircle = rescueCircle
+    } else {
+      rescueCircle.setLatLng(victimLatLng)
+    }
+
+    const helperLat = payload.helper_lat
+    const helperLng = payload.helper_lng
+    const hasHelperMarker = typeof helperLat === 'number' && typeof helperLng === 'number'
+
+    let helperMarker = (window as any)._safesphereHelperMarker
+    let helperLine = (window as any)._safesphereHelperLine
+
+    if (hasHelperMarker) {
+      const helperLatLng = L.latLng(helperLat as number, helperLng as number)
+      const helperIcon = L.divIcon({
+        className: '',
+        html: '<div style="width:18px;height:18px;background:#3b82f6;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 3px #3b82f666;"></div>',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      })
+
+      if (!helperMarker) {
+        helperMarker = L.marker(helperLatLng, { icon: helperIcon }).addTo(map)
+        ;(window as any)._safesphereHelperMarker = helperMarker
+      } else {
+        helperMarker.setLatLng(helperLatLng)
+      }
+
+      if (!helperLine) {
+        helperLine = L.polyline([victimLatLng, helperLatLng], {
+          color: '#60a5fa',
+          weight: 2,
+          dashArray: '6, 6',
+        }).addTo(map)
+        ;(window as any)._safesphereHelperLine = helperLine
+      } else {
+        helperLine.setLatLngs([victimLatLng, helperLatLng])
+      }
+
+      const bounds = L.latLngBounds([victimLatLng, helperLatLng])
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 })
+    } else {
+      if (helperMarker) {
+        map.removeLayer(helperMarker)
+        ;(window as any)._safesphereHelperMarker = null
+      }
+      if (helperLine) {
+        map.removeLayer(helperLine)
+        ;(window as any)._safesphereHelperLine = null
+      }
+      map.setView(victimLatLng, 16)
+    }
+  }, [])
 
   useEffect(() => {
-    if (!data || !mapLoaded || !data.found) return
-    const map = (window as any)._safesphereMap
-    const marker = (window as any)._safesphereMarker
-    const L = (window as any).L
-    if (map && marker && L) {
-      const newLatLng = L.latLng(data.lat, data.lng)
-      marker.setLatLng(newLatLng)
-      map.panTo(newLatLng)
-    }
-  }, [data, mapLoaded])
+    if (!leafletReady || !data || !data.found || !data.is_active) return
+    initOrUpdateMap(data)
+  }, [leafletReady, data, initOrUpdateMap])
 
-  const initMap = (L: any, lat: number, lng: number) => {
-    const existing = (window as any)._safesphereMap
-    if (existing) { existing.remove(); (window as any)._safesphereMap = null; (window as any)._safesphereMarker = null }
-    const map = L.map('safesphere-map').setView([lat, lng], 16)
-    ;(window as any)._safesphereMap = map
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors', maxZoom: 19,
-    }).addTo(map)
-    const icon = L.divIcon({
-      className: '',
-      html: `<div style="width:20px;height:20px;background:#ef4444;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 3px #ef444466;"></div>`,
-      iconSize: [20, 20], iconAnchor: [10, 10],
+  useEffect(() => {
+    const isHelperLink = Boolean(data?.helper_contact_slot)
+    if (!isHelperLink || !token) return
+
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setHelperPermission('unsupported')
+      return
+    }
+
+    setHelperPermission((prev) => (prev === 'granted' ? prev : 'requesting'))
+
+    const onSuccess = (position: GeolocationPosition) => {
+      setHelperPermission('granted')
+      setHelperSyncError(null)
+      syncHelperLocation(
+        position.coords.latitude,
+        position.coords.longitude,
+        position.coords.accuracy || 0
+      )
+    }
+
+    const onError = (geoError: GeolocationPositionError) => {
+      if (geoError.code === geoError.PERMISSION_DENIED) {
+        setHelperPermission('denied')
+        setHelperSyncError('Location permission denied by helper.')
+      } else if (geoError.code === geoError.POSITION_UNAVAILABLE) {
+        setHelperSyncError('Helper location unavailable right now.')
+      } else {
+        setHelperSyncError('Helper location request timed out.')
+      }
+    }
+
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
+      enableHighAccuracy: true,
+      timeout: 12000,
+      maximumAge: 0,
     })
-    const marker = L.marker([lat, lng], { icon }).addTo(map)
-    ;(window as any)._safesphereMarker = marker
-  }
+
+    if (helperWatchRef.current !== null) {
+      navigator.geolocation.clearWatch(helperWatchRef.current)
+    }
+
+    helperWatchRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 5000,
+    })
+
+    return () => {
+      if (helperWatchRef.current !== null) {
+        navigator.geolocation.clearWatch(helperWatchRef.current)
+        helperWatchRef.current = null
+      }
+    }
+  }, [data?.helper_contact_slot, token, syncHelperLocation])
+
+  const isHelperLink = useMemo(() => Boolean(data?.helper_contact_slot), [data?.helper_contact_slot])
 
   if (loading) {
     return (
@@ -143,6 +335,10 @@ export default function TrackingPage() {
   const statusColor = getStatusColor(data.last_updated)
   const ageText = getAgeText(data.last_updated)
   const mapsUrl = `https://maps.google.com/?q=${data.lat},${data.lng}`
+  const helperDistanceText =
+    typeof data.helper_distance_m === 'number'
+      ? getDistanceText(data.helper_distance_m)
+      : null
 
   return (
     <div style={{ minHeight:'100vh', background:'#08090e', fontFamily:'system-ui,sans-serif', color:'#f1f5f9' }}>
@@ -174,6 +370,36 @@ export default function TrackingPage() {
           </div>
         </div>
 
+        {isHelperLink && (
+          <div style={{ background:'#111219', border:'1px solid rgba(255,255,255,0.06)', borderRadius:'14px', padding:'16px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
+              <Navigation size={16} color="#60a5fa" />
+              <span style={{ color:'#cbd5e1', fontSize:'13px', fontWeight:600 }}>HELPER LIVE SHARING</span>
+            </div>
+            <p style={{ margin:'0 0 6px', fontSize:'13px', color:'#94a3b8' }}>{getPermissionText(helperPermission)}</p>
+            {helperSyncError && <p style={{ margin:'0 0 6px', fontSize:'12px', color:'#f87171' }}>{helperSyncError}</p>}
+            {helperDistanceText && (
+              <p style={{ margin:'0 0 6px', fontSize:'13px', color:'#cbd5e1' }}>
+                Distance to user: <strong>{helperDistanceText}</strong>
+              </p>
+            )}
+            {typeof data.helper_lat === 'number' && typeof data.helper_lng === 'number' && (
+              <p style={{ margin:0, fontSize:'12px', color:'#64748b' }}>
+                Helper location: {data.helper_lat.toFixed(6)}, {data.helper_lng.toFixed(6)}
+              </p>
+            )}
+            {data.auto_rescue_triggered ? (
+              <p style={{ margin:'8px 0 0', fontSize:'13px', color:'#22c55e', fontWeight:600 }}>
+                Rescue auto-confirmed: helper is within {RESCUE_RADIUS_METERS}m.
+              </p>
+            ) : data.within_rescue_radius ? (
+              <p style={{ margin:'8px 0 0', fontSize:'13px', color:'#22c55e', fontWeight:600 }}>
+                Helper is now within rescue radius ({RESCUE_RADIUS_METERS}m).
+              </p>
+            ) : null}
+          </div>
+        )}
+
         <div style={{ background:'#111219', border:'1px solid rgba(255,255,255,0.06)', borderRadius:'14px', padding:'16px' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'10px' }}>
             <MapPin size={16} color="#10b981" />
@@ -181,6 +407,11 @@ export default function TrackingPage() {
           </div>
           <p style={{ margin:'0 0 4px', fontSize:'15px', fontWeight:600 }}>{data.lat.toFixed(6)}, {data.lng.toFixed(6)}</p>
           {data.accuracy > 0 && <p style={{ margin:0, fontSize:'12px', color:'#64748b' }}>Accuracy: ±{Math.round(data.accuracy)}m</p>}
+          {isHelperLink && (
+            <p style={{ margin:'8px 0 0', fontSize:'12px', color:'#64748b' }}>
+              Red marker: user location · Blue marker: helper location · Green circle: {RESCUE_RADIUS_METERS}m rescue radius
+            </p>
+          )}
         </div>
 
         <a href={mapsUrl} target="_blank" rel="noopener noreferrer"

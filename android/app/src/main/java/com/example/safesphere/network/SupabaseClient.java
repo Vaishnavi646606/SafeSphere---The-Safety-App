@@ -627,9 +627,24 @@ public class SupabaseClient {
                     JSONObject row = links.optJSONObject(i);
                     if (row == null) continue;
 
+                    int slot = row.optInt("slot", -1);
                     String contactNumber = row.optString("contact_number", "").trim();
                     String url = row.optString("url", "").trim();
-                    if (!contactNumber.isEmpty() && !url.isEmpty()) {
+                    if (url.isEmpty()) {
+                        continue;
+                    }
+
+                    // Primary lookup key: fixed contact slot (slot:1, slot:2, slot:3).
+                    // This prevents fallback-to-shared-link when phone formatting differs.
+                    if (slot >= 1 && slot <= 3) {
+                        linksByContact.put("slot:" + slot, url);
+                    }
+
+                    // Secondary lookup key: normalized phone digits.
+                    String normalizedPhone = normalizePhoneKeyForLookup(contactNumber);
+                    if (!normalizedPhone.isEmpty()) {
+                        linksByContact.put(normalizedPhone, url);
+                    } else if (!contactNumber.isEmpty()) {
                         linksByContact.put(contactNumber, url);
                     }
                 }
@@ -654,6 +669,15 @@ public class SupabaseClient {
             return base;
         }
         return base + "/api";
+    }
+
+    private String normalizePhoneKeyForLookup(String number) {
+        if (number == null) return "";
+        String digits = number.replaceAll("\\D", "");
+        if (digits.length() > 10) {
+            digits = digits.substring(digits.length() - 10);
+        }
+        return digits;
     }
 
     private String resolveHelperApiBase() {

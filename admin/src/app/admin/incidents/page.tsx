@@ -143,6 +143,10 @@ export default function IncidentsPage() {
     return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
   }
 
+  const isAutoRescueIncident = (incident: Incident) => {
+    return incident.resolution_type === 'safe_contact' && Boolean(incident.admin_notes?.includes('[AUTO_RESCUE]'))
+  }
+
   const fetchIncidents = async () => {
     setLoading(true)
     try {
@@ -305,6 +309,7 @@ export default function IncidentsPage() {
               <tbody>
                 {filteredIncidents.map((incident) => {
                   const isExpanded = expandedId === incident.id
+                  const isAutoRescued = isAutoRescueIncident(incident)
                   return (
                     <Fragment key={incident.id}>
                       <tr className="border-b border-white/5 text-sm hover:bg-white/[0.02]">
@@ -332,12 +337,22 @@ export default function IncidentsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <StatusBadge
-                            status={incident.resolution_type ? 'success' : 'pending'}
-                            label={pretty(incident.resolution_type, 'Pending')}
-                            size="sm"
-                            icon={false}
-                          />
+                          <div className="flex flex-col items-center gap-1">
+                            <StatusBadge
+                              status={incident.resolution_type ? 'success' : 'pending'}
+                              label={pretty(incident.resolution_type, 'Pending')}
+                              size="sm"
+                              icon={false}
+                            />
+                            {isAutoRescued ? (
+                              <StatusBadge
+                                status="success"
+                                label="Auto Rescued"
+                                size="sm"
+                                icon={false}
+                              />
+                            ) : null}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-center">
                           <button
@@ -358,6 +373,14 @@ export default function IncidentsPage() {
                                 <p>Trigger: {pretty(incident.trigger_type)}</p>
                                 <p>Status: {pretty(incident.status)}</p>
                                 <p>Resolution: {pretty(incident.resolution_type, 'Pending')}</p>
+                                <p>
+                                  Auto rescue:{' '}
+                                  {isAutoRescued ? (
+                                    <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">Yes (within 50m)</span>
+                                  ) : (
+                                    <span className="text-slate-400">No</span>
+                                  )}
+                                </p>
                                 <p>Time triggered: {formatDate(incident.triggered_at)}</p>
                                 <p>Time resolved: {formatDate(incident.resolved_at)}</p>
                                 <p>Battery: {incident.phone_battery_percent !== null ? `${incident.phone_battery_percent}%` : 'Unknown'}</p>

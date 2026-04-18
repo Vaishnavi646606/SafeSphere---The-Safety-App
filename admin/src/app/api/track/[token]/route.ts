@@ -1,6 +1,160 @@
 import { createServiceClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server'
 
+const AUTO_RESCUE_RADIUS_METERS = 50
+
+interface HelperLinkRow {
+  id: string
+  user_id: string
+  contact_slot: number | null
+  contact_number: string | null
+  opened_at: string | null
+  open_count: number | null
+  helper_lat?: number | null
+  helper_lng?: number | null
+  helper_accuracy?: number | null
+  helper_last_updated?: string | null
+  helper_distance_m?: number | null
+  auto_rescue_triggered?: boolean | null
+  auto_rescue_at?: string | null
+}
+
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180
+}
+
+function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const earthRadiusMeters = 6371000
+  const dLat = toRadians(lat2 - lat1)
+  const dLng = toRadians(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2)
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return earthRadiusMeters * c
+}
+
+function readCoordinate(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+async function fetchHelperLink(
+  supabase: ReturnType<typeof createServiceClient>,
+  cleanedToken: string,
+  nowIso: string
+): Promise<HelperLinkRow | null> {
+  const { data: extended, error: extendedError } = await supabase
+    .from('emergency_helper_links')
+    .select('id, user_id, contact_slot, contact_number, opened_at, open_count, helper_lat, helper_lng, helper_accuracy, helper_last_updated, helper_distance_m, auto_rescue_triggered, auto_rescue_at')
+    .eq('token', cleanedToken)
+    .eq('is_active', true)
+    .gt('expires_at', nowIso)
+    .single()
+
+  if (extended && !extendedError) {
+    return extended as HelperLinkRow
+  }
+
+  const { data: basic, error: basicError } = await supabase
+    .from('emergency_helper_links')
+    .select('id, user_id, contact_slot, contact_number, opened_at, open_count')
+    .eq('token', cleanedToken)
+    .eq('is_active', true)
+    .gt('expires_at', nowIso)
+    .single()
+
+  if (basicError || !basic) {
+    return null
+  }
+
+  return {
+    ...(basic as HelperLinkRow),
+    helper_lat: null,
+    helper_lng: null,
+    helper_accuracy: null,
+    helper_last_updated: null,
+    helper_distance_m: null,
+    auto_rescue_triggered: false,
+    auto_rescue_at: null,
+  }
+}
+
+async function fetchVictimSession(
+  supabase: ReturnType<typeof createServiceClient>,
+  userId: string,
+  nowIso: string
+) {
+  const { data, error } = await supabase
+    .from('live_location_sessions')
+    .select('lat, lng, accuracy, last_updated, display_name, is_active')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .gt('expires_at', nowIso)
+    .single()
+
+  if (error || !data) return null
+  return data
+}
+
+async function maybeMarkEmergencyAsRescued(
+  supabase: ReturnType<typeof createServiceClient>,
+  userId: string,
+  distanceM: number,
+  nowIso: string
+): Promise<boolean> {
+  if (distanceM > AUTO_RESCUE_RADIUS_METERS) {
+    return false
+  }
+
+  const { data: event } = await supabase
+    .from('emergency_events')
+    .select('id, triggered_at, status, resolution_type, admin_notes')
+    .eq('user_id', userId)
+    .neq('status', 'resolved')
+    .order('triggered_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!event) {
+    return false
+  }
+
+  const triggeredAtMs = new Date(event.triggered_at).getTime()
+  const resolvedAtMs = new Date(nowIso).getTime()
+  const timeToResolveS = Number.isFinite(triggeredAtMs)
+    ? Math.max(0, Math.round((resolvedAtMs - triggeredAtMs) / 1000))
+    : null
+
+  const autoNote = `[AUTO_RESCUE] Helper proximity detected within ${Math.round(distanceM)}m from live location.`
+  const mergedNotes = event.admin_notes && event.admin_notes.trim().length > 0
+    ? `${event.admin_notes}\n${autoNote}`
+    : autoNote
+
+  const { error: updateError } = await supabase
+    .from('emergency_events')
+    .update({
+      status: 'resolved',
+      resolution_type: 'safe_contact',
+      resolved_at: nowIso,
+      time_to_resolve_s: timeToResolveS,
+      requires_admin_review: false,
+      admin_notes: mergedNotes,
+      updated_at: nowIso,
+    })
+    .eq('id', event.id)
+
+  return !updateError
+}
+
 /**
  * GET /api/track/[token]
  * Public endpoint — no auth required.
@@ -54,13 +208,8 @@ export async function GET(
       })
     }
 
-    const { data: helperLink } = await supabase
-      .from('emergency_helper_links')
-      .select('id, user_id, contact_slot, contact_number, opened_at, open_count')
-      .eq('token', cleanedToken)
-      .eq('is_active', true)
-      .gt('expires_at', new Date().toISOString())
-      .single()
+    const nowIso = new Date().toISOString()
+    const helperLink = await fetchHelperLink(supabase, cleanedToken, nowIso)
 
     if (!helperLink) {
       return NextResponse.json(
@@ -69,7 +218,6 @@ export async function GET(
       )
     }
 
-    const nowIso = new Date().toISOString()
     await supabase
       .from('emergency_helper_links')
       .update({
@@ -79,20 +227,29 @@ export async function GET(
       })
       .eq('id', helperLink.id)
 
-    const { data: victimSession, error: victimError } = await supabase
-      .from('live_location_sessions')
-      .select('lat, lng, accuracy, last_updated, display_name, is_active')
-      .eq('user_id', helperLink.user_id)
-      .eq('is_active', true)
-      .gt('expires_at', nowIso)
-      .single()
+    const victimSession = await fetchVictimSession(supabase, helperLink.user_id, nowIso)
 
-    if (victimError || !victimSession) {
+    if (!victimSession) {
       return NextResponse.json(
         { found: false, error: 'Victim live location unavailable' },
         { status: 404 }
       )
     }
+
+    const hasHelperCoords =
+      typeof helperLink.helper_lat === 'number' &&
+      Number.isFinite(helperLink.helper_lat) &&
+      typeof helperLink.helper_lng === 'number' &&
+      Number.isFinite(helperLink.helper_lng)
+
+    const helperDistance = hasHelperCoords
+      ? distanceMeters(
+          victimSession.lat,
+          victimSession.lng,
+          helperLink.helper_lat as number,
+          helperLink.helper_lng as number
+        )
+      : helperLink.helper_distance_m ?? null
 
     return NextResponse.json({
       found: true,
@@ -104,12 +261,148 @@ export async function GET(
       is_active: victimSession.is_active,
       helper_contact_slot: helperLink.contact_slot,
       helper_contact_number: helperLink.contact_number,
+      helper_lat: helperLink.helper_lat ?? null,
+      helper_lng: helperLink.helper_lng ?? null,
+      helper_accuracy: helperLink.helper_accuracy ?? null,
+      helper_last_updated: helperLink.helper_last_updated ?? null,
+      helper_distance_m: helperDistance,
+      within_rescue_radius: helperDistance !== null ? helperDistance <= AUTO_RESCUE_RADIUS_METERS : false,
+      auto_rescue_triggered: Boolean(helperLink.auto_rescue_triggered),
+      auto_rescue_at: helperLink.auto_rescue_at ?? null,
     })
 
   } catch (err) {
     console.error('Track API error:', err)
     return NextResponse.json(
       { found: false, error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * POST /api/track/[token]
+ * Public endpoint used by helper browsers to submit their own live location.
+ * If helper and victim are within 50m, emergency is auto-marked as rescued.
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ token: string }> }
+) {
+  try {
+    const { token } = await params
+
+    if (!token || token.trim().length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Token is required' },
+        { status: 400 }
+      )
+    }
+
+    const body = await request.json()
+    const helperLat = readCoordinate(body?.lat)
+    const helperLng = readCoordinate(body?.lng)
+    const helperAccuracy = readCoordinate(body?.accuracy)
+
+    if (helperLat === null || helperLng === null) {
+      return NextResponse.json(
+        { success: false, error: 'lat and lng are required numeric values' },
+        { status: 400 }
+      )
+    }
+
+    if (helperLat < -90 || helperLat > 90 || helperLng < -180 || helperLng > 180) {
+      return NextResponse.json(
+        { success: false, error: 'Coordinates are out of range' },
+        { status: 400 }
+      )
+    }
+
+    const supabase = createServiceClient()
+    const cleanedToken = token.trim()
+    const nowIso = new Date().toISOString()
+
+    const helperLink = await fetchHelperLink(supabase, cleanedToken, nowIso)
+    if (!helperLink) {
+      return NextResponse.json(
+        { success: false, error: 'Helper tracking link not found or expired' },
+        { status: 404 }
+      )
+    }
+
+    const victimSession = await fetchVictimSession(supabase, helperLink.user_id, nowIso)
+    if (!victimSession) {
+      return NextResponse.json(
+        { success: false, error: 'Victim live location unavailable' },
+        { status: 404 }
+      )
+    }
+
+    const helperDistanceM = distanceMeters(victimSession.lat, victimSession.lng, helperLat, helperLng)
+    const withinRescueRadius = helperDistanceM <= AUTO_RESCUE_RADIUS_METERS
+    const autoRescueTriggered = await maybeMarkEmergencyAsRescued(
+      supabase,
+      helperLink.user_id,
+      helperDistanceM,
+      nowIso
+    )
+
+    const updatePayload: Record<string, unknown> = {
+      opened_at: helperLink.opened_at ?? nowIso,
+      last_opened_at: nowIso,
+      open_count: (helperLink.open_count ?? 0) + 1,
+      helper_lat: helperLat,
+      helper_lng: helperLng,
+      helper_accuracy: helperAccuracy ?? null,
+      helper_last_updated: nowIso,
+      helper_distance_m: helperDistanceM,
+    }
+
+    if (withinRescueRadius) {
+      updatePayload.auto_rescue_triggered = true
+      updatePayload.auto_rescue_at = nowIso
+    }
+
+    const { error: helperUpdateError } = await supabase
+      .from('emergency_helper_links')
+      .update(updatePayload)
+      .eq('id', helperLink.id)
+
+    if (helperUpdateError) {
+      await supabase
+        .from('emergency_helper_links')
+        .update({
+          opened_at: helperLink.opened_at ?? nowIso,
+          last_opened_at: nowIso,
+          open_count: (helperLink.open_count ?? 0) + 1,
+        })
+        .eq('id', helperLink.id)
+    }
+
+    return NextResponse.json({
+      success: true,
+      found: true,
+      lat: victimSession.lat,
+      lng: victimSession.lng,
+      accuracy: victimSession.accuracy ?? 0,
+      last_updated: victimSession.last_updated,
+      display_name: victimSession.display_name,
+      is_active: victimSession.is_active,
+      helper_contact_slot: helperLink.contact_slot,
+      helper_contact_number: helperLink.contact_number,
+      helper_lat: helperLat,
+      helper_lng: helperLng,
+      helper_accuracy: helperAccuracy ?? null,
+      helper_last_updated: nowIso,
+      helper_distance_m: helperDistanceM,
+      within_rescue_radius: withinRescueRadius,
+      auto_rescue_triggered: autoRescueTriggered || withinRescueRadius,
+      auto_rescue_at: withinRescueRadius ? nowIso : null,
+    })
+  } catch (err) {
+    console.error('Track helper-location POST error:', err)
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     )
   }

@@ -432,9 +432,30 @@ public class EmergencyManager {
                     Map<String, String> generated = client.generateHelperTrackingLinks(userId.trim(), numbers);
                     if (generated != null && !generated.isEmpty()) {
                         for (Map.Entry<String, String> entry : generated.entrySet()) {
-                            helperLinks.put(normalizePhoneKey(entry.getKey()), entry.getValue());
+                            String key = entry.getKey() == null ? "" : entry.getKey().trim();
+                            String value = entry.getValue() == null ? "" : entry.getValue().trim();
+                            if (value.isEmpty()) {
+                                continue;
+                            }
+
+                            if (key.startsWith("slot:")) {
+                                helperLinks.put(key, value);
+                                continue;
+                            }
+
+                            String normalized = normalizePhoneKey(key);
+                            if (!normalized.isEmpty()) {
+                                helperLinks.put(normalized, value);
+                            }
                         }
-                        Log.d(TAG, "Generated per-contact helper links: " + helperLinks.size());
+                        int slotLinkCount = 0;
+                        for (String key : helperLinks.keySet()) {
+                            if (key.startsWith("slot:")) {
+                                slotLinkCount++;
+                            }
+                        }
+                        Log.d(TAG, "Generated helper links for slots: " + slotLinkCount
+                                + " (lookup keys=" + helperLinks.size() + ")");
                     } else {
                         Log.w(TAG, "Per-contact helper links unavailable — fallback to shared token link");
                     }
@@ -550,10 +571,11 @@ public class EmergencyManager {
             String locationAge,
             Map<String, String> contactTrackingUrls) {
         if (numbers == null) return;
-        for (String number : numbers) {
+        for (int i = 0; i < numbers.length; i++) {
+            String number = numbers[i];
             if (number == null || number.trim().isEmpty()) continue;
 
-            String trackingUrl = resolveTrackingUrl(number, contactTrackingUrls, defaultTrackingUrl);
+            String trackingUrl = resolveTrackingUrl(number, i + 1, contactTrackingUrls, defaultTrackingUrl);
             String locationLine = (locationAge == null || locationAge.trim().isEmpty())
                     ? "📍 Last Known Location: " + mapsUrl
                     : "📍 Last Known Location (" + locationAge + "): " + mapsUrl;
@@ -571,10 +593,11 @@ public class EmergencyManager {
             String fallbackTrackingUrl,
             Map<String, String> contactTrackingUrls) {
         if (numbers == null) return;
-        for (String number : numbers) {
+        for (int i = 0; i < numbers.length; i++) {
+            String number = numbers[i];
             if (number == null || number.trim().isEmpty()) continue;
 
-            String trackingUrl = resolveTrackingUrl(number, contactTrackingUrls, fallbackTrackingUrl);
+            String trackingUrl = resolveTrackingUrl(number, i + 1, contactTrackingUrls, fallbackTrackingUrl);
             String body = "🚨 Emergency Alert! This person may be in danger. "
                     + "Please try to contact them immediately.\n"
                     + "📍 Location: Not available — GPS may be off.\n"
@@ -585,10 +608,22 @@ public class EmergencyManager {
         }
     }
 
-    private static String resolveTrackingUrl(String number, Map<String, String> contactTrackingUrls, String fallbackUrl) {
+    private static String resolveTrackingUrl(
+            String number,
+            int slot,
+            Map<String, String> contactTrackingUrls,
+            String fallbackUrl) {
         if (contactTrackingUrls == null || contactTrackingUrls.isEmpty()) {
             return fallbackUrl;
         }
+
+        if (slot >= 1) {
+            String slotUrl = contactTrackingUrls.get("slot:" + slot);
+            if (slotUrl != null && !slotUrl.trim().isEmpty()) {
+                return slotUrl.trim();
+            }
+        }
+
         String key = normalizePhoneKey(number);
         if (key == null || key.isEmpty()) {
             return fallbackUrl;

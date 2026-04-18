@@ -42,6 +42,8 @@ export async function GET(req: NextRequest) {
     { count: feedbackCount },
     { count: realEmergencies },
     { count: usersRescued },
+    { count: autoRescues },
+    { count: verifiedRescues },
     { data: ratingsRaw },
     { data: dailyEventsRaw },
     { data: triggerEventsRaw }
@@ -60,6 +62,13 @@ export async function GET(req: NextRequest) {
     serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }).gte('submitted_at', since),
     serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }).eq('was_real_emergency', true).gte('submitted_at', since),
     serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }).eq('was_rescued_or_helped', true).gte('submitted_at', since),
+    serviceClient
+      .from('emergency_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('resolution_type', 'safe_contact')
+      .ilike('admin_notes', '%[AUTO_RESCUE]%')
+      .gte('triggered_at', since),
+    serviceClient.from('saved_verifications').select('*', { count: 'exact', head: true }).gte('verified_at', since),
     serviceClient.from('emergency_feedback').select('rating').gte('submitted_at', since),
     serviceClient.from('emergency_events').select('triggered_at').gte('triggered_at', since),
     serviceClient.from('emergency_events').select('trigger_type').gte('triggered_at', since)
@@ -120,6 +129,8 @@ export async function GET(req: NextRequest) {
       feedback_received: feedbackCount || 0,
       real_emergencies: realEmergencies || 0,
       users_rescued: usersRescued || 0,
+      auto_rescues: autoRescues || 0,
+      verified_rescues: verifiedRescues || 0,
       incidents_call_connected: callsAnswered || 0,
       avg_rating: avgRating,
       events_last_24h: activeToday || 0,

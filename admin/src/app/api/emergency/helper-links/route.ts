@@ -43,7 +43,13 @@ export async function POST(request: NextRequest) {
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
     const origin = new URL(request.url).origin
 
-    const links = []
+    const links: Array<{
+      slot: number
+      contact_number: string
+      token: string
+      url: string
+      reused: boolean
+    }> = []
 
     for (const contact of validContacts) {
       const normalizedPhone = normalizePhone(contact.phone)
@@ -64,7 +70,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Failed to read helper links' }, { status: 500 })
       }
 
-      const existingLink = (existingLinks || []).find((item) => {
+      const existingLink = (existingLinks || []).find((item: ExistingHelperLinkRow) => {
         const existingPhone = normalizePhone(item.contact_number)
         return existingPhone && existingPhone === normalizedPhone
       }) as ExistingHelperLinkRow | undefined

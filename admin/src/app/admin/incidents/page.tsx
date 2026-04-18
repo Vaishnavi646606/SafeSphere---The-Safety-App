@@ -263,7 +263,7 @@ export default function IncidentsPage() {
             ))}
             <button
               onClick={fetchIncidents}
-              className="ml-1 rounded-lg border border-white/[0.08] bg-white/5 p-1.5 text-slate-400 hover:text-white"
+              className="ml-1 rounded-lg border border-white/8 bg-white/5 p-1.5 text-slate-400 hover:text-white"
               title="Refresh"
             >
               <RefreshCw size={14} />
@@ -277,19 +277,19 @@ export default function IncidentsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by user, trigger, phone, or incident id"
-            className="w-full rounded-xl border border-white/[0.08] bg-[#16171f] py-2.5 pl-9 pr-3 text-sm text-slate-200 outline-none focus:border-emerald-500/40"
+            className="w-full rounded-xl border border-white/8 bg-[#16171f] py-2.5 pl-9 pr-3 text-sm text-slate-200 outline-none focus:border-emerald-500/40"
           />
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-white/[0.06] bg-[#111219]">
+      <section className="overflow-hidden rounded-2xl border border-white/6 bg-[#111219]">
         <div className="overflow-x-auto">
           {loading ? (
             <div className="p-4">
               <LoadingSkeleton type="table" count={6} />
             </div>
           ) : filteredIncidents.length === 0 ? (
-            <div className="flex min-h-[200px] flex-col items-center justify-center p-8 text-center">
+            <div className="flex min-h-50 flex-col items-center justify-center p-8 text-center">
               <AlertTriangle size={28} className="text-slate-700" />
               <p className="mt-2 text-sm text-slate-600">No incidents found for the current filter.</p>
             </div>
@@ -312,7 +312,7 @@ export default function IncidentsPage() {
                   const isAutoRescued = isAutoRescueIncident(incident)
                   return (
                     <Fragment key={incident.id}>
-                      <tr className="border-b border-white/5 text-sm hover:bg-white/[0.02]">
+                      <tr className="border-b border-white/5 text-sm hover:bg-white/2">
                         <td className="whitespace-nowrap px-4 py-3 text-slate-300">{formatDate(incident.triggered_at)}</td>
                         <td className="px-4 py-3">
                           <p className="text-slate-100">{incident.users?.display_name || 'Unknown'}</p>
@@ -357,7 +357,7 @@ export default function IncidentsPage() {
                         <td className="px-4 py-3 text-center">
                           <button
                             onClick={() => setExpandedId(expandedId === incident.id ? null : incident.id)}
-                            className="rounded-lg border border-white/[0.08] bg-white/5 p-1.5 text-slate-400 hover:text-white"
+                            className="rounded-lg border border-white/8 bg-white/5 p-1.5 text-slate-400 hover:text-white"
                           >
                             {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                           </button>
@@ -368,7 +368,7 @@ export default function IncidentsPage() {
                         <tr key={`${incident.id}-expanded`}>
                           <td colSpan={8} className="bg-[#0c0d13] border-b border-white/5 px-6 py-5">
                             <div className="grid gap-4 lg:grid-cols-3">
-                              <div className="space-y-2 rounded-xl border border-white/[0.08] bg-[#111219] p-4 text-sm text-slate-300">
+                              <div className="space-y-2 rounded-xl border border-white/8 bg-[#111219] p-4 text-sm text-slate-300">
                                 <h4 className="text-xs uppercase tracking-widest text-slate-500">Emergency Details</h4>
                                 <p>Trigger: {pretty(incident.trigger_type)}</p>
                                 <p>Status: {pretty(incident.status)}</p>
@@ -400,7 +400,7 @@ export default function IncidentsPage() {
                                 </p>
                               </div>
 
-                              <div className="space-y-2 rounded-xl border border-white/[0.08] bg-[#111219] p-4 text-sm text-slate-300">
+                              <div className="space-y-2 rounded-xl border border-white/8 bg-[#111219] p-4 text-sm text-slate-300">
                                 <h4 className="text-xs uppercase tracking-widest text-slate-500">Contact Details</h4>
                                 <p>Primary contact: {incident.primary_contact_called || 'None'}</p>
                                 <p>
@@ -435,7 +435,7 @@ export default function IncidentsPage() {
                                 <p>SMS sent to: {incident.sms_sent_to || 'None'}</p>
                               </div>
 
-                              <div className="space-y-2 rounded-xl border border-white/[0.08] bg-[#111219] p-4 text-sm text-slate-300">
+                                                              <div className="space-y-2 rounded-xl border border-white/8 bg-[#111219] p-4 text-sm text-slate-300">
                                 <h4 className="text-xs uppercase tracking-widest text-slate-500">Response Times</h4>
                                 <p>Time to first contact: {incident.time_to_first_contact_s ? `${incident.time_to_first_contact_s}s` : 'N/A'}</p>
                                 <p>Time to answer: {incident.time_to_answer_s ? `${incident.time_to_answer_s}s` : 'N/A'}</p>
@@ -448,7 +448,7 @@ export default function IncidentsPage() {
                               </div>
                             </div>
 
-                            <div className="mt-4 rounded-xl border border-white/[0.08] bg-[#111219] p-4">
+                            <div className="mt-4 rounded-xl border border-white/8 bg-[#111219] p-4">
                               <h4 className="text-xs uppercase tracking-widest text-slate-500">Admin Notes</h4>
                               <textarea
                                 value={notes[incident.id] ?? incident.admin_notes ?? ''}
@@ -469,7 +469,7 @@ export default function IncidentsPage() {
                               >
                                 {savingNotes === incident.id ? 'Saving...' : 'Save Notes'}
 
-                                                          <div className="mt-4 rounded-xl border border-white/[0.08] bg-[#111219] p-4">
+                                                          <div className="mt-4 rounded-xl border border-white/8 bg-[#111219] p-4">
                                                             <h4 className="text-xs uppercase tracking-widest text-slate-500">Set Outcome</h4>
                                                             <div className="mt-2 flex items-center gap-3">
                                                               <select

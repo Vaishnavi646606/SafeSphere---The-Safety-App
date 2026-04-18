@@ -55,13 +55,13 @@ export default function SavedPage() {
         </div>
         <button
           onClick={fetchData}
-          className="inline-flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/5 px-3 py-1.5 text-xs text-slate-300 hover:text-white"
+          className="inline-flex items-center gap-2 rounded-lg border border-white/8 bg-white/5 px-3 py-1.5 text-xs text-slate-300 hover:text-white"
         >
           <RefreshCw size={14} /> Refresh
         </button>
       </section>
 
-      <section className="rounded-2xl border border-white/[0.06] bg-[#111219] p-5">
+      <section className="rounded-2xl border border-white/6 bg-[#111219] p-5">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f43f5e26]">
             <Heart size={20} className="text-[#f43f5e]" />
@@ -76,7 +76,7 @@ export default function SavedPage() {
         </p>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-white/[0.06] bg-[#111219]">
+      <section className="overflow-hidden rounded-2xl border border-white/6 bg-[#111219]">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -96,7 +96,7 @@ export default function SavedPage() {
               ) : verifications.length === 0 ? (
                 <tr>
                   <td colSpan={5}>
-                    <div className="flex min-h-[200px] flex-col items-center justify-center p-8 text-center">
+                    <div className="flex min-h-50 flex-col items-center justify-center p-8 text-center">
                       <Heart size={28} className="text-slate-700" />
                       <p className="mt-2 text-sm text-slate-600">No verified rescues yet.</p>
                     </div>
@@ -104,7 +104,7 @@ export default function SavedPage() {
                 </tr>
               ) : (
                 verifications.map((item) => (
-                  <tr key={item.id} className="border-b border-white/5 text-sm hover:bg-white/[0.02]">
+                  <tr key={item.id} className="border-b border-white/5 text-sm hover:bg-white/2">
                     <td className="px-4 py-3 text-slate-300">{formatDate(item.verified_at)}</td>
                     <td className="px-4 py-3">
                       <div className="text-slate-100">{item.users?.display_name || 'Unknown User'}</div>

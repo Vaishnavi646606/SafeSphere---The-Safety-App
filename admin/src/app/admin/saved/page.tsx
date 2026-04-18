@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Heart, RefreshCw } from 'lucide-react'
 
-const AUTO_REFRESH_INTERVAL_MS = 15000
-
 interface Verification {
   id: string
   incident_session_id: string
@@ -37,14 +35,6 @@ export default function SavedPage() {
 
   useEffect(() => {
     fetchData()
-  }, [fetchData])
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      fetchData()
-    }, AUTO_REFRESH_INTERVAL_MS)
-
-    return () => window.clearInterval(intervalId)
   }, [fetchData])
 
   const formatDate = (value: string) =>
@@ -121,8 +111,12 @@ export default function SavedPage() {
                       <div className="font-mono text-xs text-slate-500">{item.users?.phone_hash?.slice(0, 8) || 'N/A'}...</div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-slate-100">{item.admin_accounts?.display_name || 'Unknown Admin'}</div>
-                      <div className="text-xs text-slate-500">{item.admin_accounts?.email || ''}</div>
+                      <div className="text-slate-100">
+                        {item.admin_accounts?.display_name || (item.evidence_type === 'auto_proximity_detection' ? 'Auto System' : 'Unknown Admin')}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {item.admin_accounts?.email || (item.evidence_type === 'auto_proximity_detection' ? 'System generated' : '')}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className="rounded-lg bg-[#f59e0b26] px-2 py-1 text-xs text-[#f59e0b]">

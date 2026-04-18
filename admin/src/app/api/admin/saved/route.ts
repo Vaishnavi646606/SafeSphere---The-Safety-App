@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/server'
 
+function isAutoVerification(record: any): boolean {
+  const evidenceType = typeof record?.evidence_type === 'string' ? record.evidence_type : ''
+  const notes = typeof record?.notes === 'string' ? record.notes : ''
+  return evidenceType === 'auto_proximity_detection' || notes.includes('[AUTO_RESCUE]')
+}
+
 async function getAdminId(req: NextRequest): Promise<string | null> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -49,11 +55,18 @@ export async function GET(req: NextRequest) {
   const usersMap = Object.fromEntries((users || []).map((u: any) => [u.id, u]))
   const adminsMap = Object.fromEntries((admins || []).map((a: any) => [a.id, a]))
 
-  const enriched = verifications.map((v: any) => ({
-    ...v,
-    users: usersMap[v.user_id] || null,
-    admin_accounts: adminsMap[v.verified_by] || null
-  }))
+  const enriched = verifications.map((v: any) => {
+    const resolvedAdmin = adminsMap[v.verified_by] || null
+    const adminFallback = isAutoVerification(v)
+      ? { display_name: 'Auto System', email: 'System generated' }
+      : null
+
+    return {
+      ...v,
+      users: usersMap[v.user_id] || null,
+      admin_accounts: resolvedAdmin || adminFallback,
+    }
+  })
 
   return NextResponse.json({ verifications: enriched, total: enriched.length })
 }

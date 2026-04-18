@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
         primary_contact_called, primary_contact_answered,
         secondary_contact_called, secondary_contact_answered,
         tertiary_contact_called, tertiary_contact_answered,
+        time_to_answer_s,
         time_to_resolve_s
       `)
       .gte('triggered_at', since)
@@ -75,11 +76,25 @@ export async function GET(req: NextRequest) {
 
     const responseRate = total > 0 ? Math.round((successful / total) * 100) : 0
 
+    // Exclude stale/manual outliers from operational response-time view.
+    const MAX_OPERATIONAL_RESPONSE_SECONDS = 2 * 60 * 60
     const validTimes: number[] = []
     ;(allEvents || []).forEach((e: any) => {
-      if (e.triggered_at && e.resolved_at) {
+      let seconds: number | null = null
+
+      if (typeof e.time_to_answer_s === 'number' && Number.isFinite(e.time_to_answer_s) && e.time_to_answer_s > 0) {
+        seconds = e.time_to_answer_s
+      } else if (typeof e.time_to_resolve_s === 'number' && Number.isFinite(e.time_to_resolve_s) && e.time_to_resolve_s > 0) {
+        seconds = e.time_to_resolve_s
+      } else if (e.triggered_at && e.resolved_at) {
         const diffMs = new Date(e.resolved_at).getTime() - new Date(e.triggered_at).getTime()
-        if (diffMs > 0) validTimes.push(diffMs / 1000)
+        if (diffMs > 0) {
+          seconds = diffMs / 1000
+        }
+      }
+
+      if (seconds !== null && seconds > 0 && seconds <= MAX_OPERATIONAL_RESPONSE_SECONDS) {
+        validTimes.push(seconds)
       }
     })
 

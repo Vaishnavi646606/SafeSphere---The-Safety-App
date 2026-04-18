@@ -32,6 +32,11 @@ interface Incident {
   is_test_event: boolean | null
   requires_admin_review: boolean | null
   sms_sent_to: string | null
+  auto_rescue_helper_slot?: number | null
+  auto_rescue_helper_number?: string | null
+  auto_rescue_helper_token?: string | null
+  auto_rescue_helper_url?: string | null
+  auto_rescue_helper_at?: string | null
   users?: {
     display_name: string
     phone_hash: string
@@ -141,6 +146,13 @@ export default function IncidentsPage() {
   const pretty = (value: string | null | undefined, fallback = 'Unknown') => {
     if (!value) return fallback
     return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+
+  const maskContact = (value: string | null | undefined) => {
+    if (!value || value.trim().length === 0) return 'Unknown'
+    const digits = value.replace(/\D/g, '')
+    if (digits.length <= 4) return digits
+    return `${digits.slice(0, 2)}******${digits.slice(-2)}`
   }
 
   const isAutoRescueIncident = (incident: Incident) => {
@@ -381,6 +393,34 @@ export default function IncidentsPage() {
                                     <span className="text-slate-400">No</span>
                                   )}
                                 </p>
+                                {isAutoRescued ? (
+                                  <p>
+                                    Rescue source:{' '}
+                                    {incident.auto_rescue_helper_slot ? (
+                                      <span className="rounded bg-cyan-500/20 px-2 py-0.5 text-xs text-cyan-300">
+                                        Helper {incident.auto_rescue_helper_slot} ({maskContact(incident.auto_rescue_helper_number)})
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400">Helper link info unavailable</span>
+                                    )}
+                                  </p>
+                                ) : null}
+                                {isAutoRescued && incident.auto_rescue_helper_at ? (
+                                  <p>Helper rescue time: {formatDate(incident.auto_rescue_helper_at)}</p>
+                                ) : null}
+                                {isAutoRescued && incident.auto_rescue_helper_url ? (
+                                  <p>
+                                    Helper tracking link:{' '}
+                                    <a
+                                      href={incident.auto_rescue_helper_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-cyan-300 underline decoration-cyan-600/40 underline-offset-2 hover:text-cyan-200"
+                                    >
+                                      Open link
+                                    </a>
+                                  </p>
+                                ) : null}
                                 <p>Time triggered: {formatDate(incident.triggered_at)}</p>
                                 <p>Time resolved: {formatDate(incident.resolved_at)}</p>
                                 <p>Battery: {incident.phone_battery_percent !== null ? `${incident.phone_battery_percent}%` : 'Unknown'}</p>

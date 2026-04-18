@@ -1,6 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 
+interface IncidentRow {
+  id: string
+  user_id: string
+  triggered_at: string
+  resolved_at: string | null
+  resolution_type: string | null
+  admin_notes: string | null
+  [key: string]: any
+}
+
+interface HelperRescueRow {
+  id: string
+  user_id: string
+  contact_slot: number | null
+  contact_number: string | null
+  token: string
+  auto_rescue_at: string | null
+}
+
+function isAutoRescuedIncident(incident: IncidentRow): boolean {
+  return incident.resolution_type === 'safe_contact' && Boolean(incident.admin_notes?.includes('[AUTO_RESCUE]'))
+}
+
+function toMs(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  const value = new Date(iso).getTime()
+  return Number.isFinite(value) ? value : null
+}
+
+function pickHelperForIncident(incident: IncidentRow, candidates: HelperRescueRow[]): HelperRescueRow | null {
+  if (!candidates || candidates.length === 0) return null
+
+  const triggeredMs = toMs(incident.triggered_at)
+  const resolvedMs = toMs(incident.resolved_at)
+  const anchorMs = resolvedMs ?? triggeredMs
+  if (anchorMs === null) return candidates[0] || null
+
+  const lowerBound = triggeredMs !== null ? triggeredMs - 10 * 60 * 1000 : anchorMs - 60 * 60 * 1000
+  const upperBound = resolvedMs !== null ? resolvedMs + 6 * 60 * 60 * 1000 : anchorMs + 6 * 60 * 60 * 1000
+
+  const windowed = candidates.filter((item) => {
+    const helperMs = toMs(item.auto_rescue_at)
+    if (helperMs === null) return false
+    return helperMs >= lowerBound && helperMs <= upperBound
+  })
+
+  const source = windowed.length > 0 ? windowed : candidates
+
+  return source.reduce<HelperRescueRow | null>((best, current) => {
+    const currentMs = toMs(current.auto_rescue_at)
+    if (currentMs === null) return best
+
+    if (!best) return current
+
+    const bestMs = toMs(best.auto_rescue_at)
+    if (bestMs === null) return current
+
+    return Math.abs(currentMs - anchorMs) < Math.abs(bestMs - anchorMs) ? current : best
+  }, null)
+}
+
 /**
  * GET /api/admin/incidents?limit=50&offset=0&status=triggered&trigger=keyword_detected
  * 
@@ -81,8 +142,59 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch incidents' }, { status: 500 })
     }
     
+    const rows = (incidents || []) as IncidentRow[]
+    let enrichedRows: IncidentRow[] = rows
+
+    if (rows.length > 0) {
+      const autoRescuedRows = rows.filter(isAutoRescuedIncident)
+      const userIds = [...new Set(autoRescuedRows.map((item) => item.user_id).filter(Boolean))]
+
+      if (userIds.length > 0) {
+        const { data: helperRows, error: helperError } = await db
+          .from('emergency_helper_links')
+          .select('id, user_id, contact_slot, contact_number, token, auto_rescue_at')
+          .in('user_id', userIds)
+          .eq('auto_rescue_triggered', true)
+          .not('auto_rescue_at', 'is', null)
+          .order('auto_rescue_at', { ascending: false })
+
+        if (!helperError && helperRows) {
+          const helperByUser = new Map<string, HelperRescueRow[]>()
+          ;(helperRows as HelperRescueRow[]).forEach((item) => {
+            const list = helperByUser.get(item.user_id) || []
+            list.push(item)
+            helperByUser.set(item.user_id, list)
+          })
+
+          const origin = new URL(req.url).origin
+          enrichedRows = rows.map((incident) => {
+            if (!isAutoRescuedIncident(incident)) {
+              return {
+                ...incident,
+                auto_rescue_helper_slot: null,
+                auto_rescue_helper_number: null,
+                auto_rescue_helper_token: null,
+                auto_rescue_helper_url: null,
+                auto_rescue_helper_at: null,
+              }
+            }
+
+            const matched = pickHelperForIncident(incident, helperByUser.get(incident.user_id) || [])
+            return {
+              ...incident,
+              auto_rescue_helper_slot: matched?.contact_slot ?? null,
+              auto_rescue_helper_number: matched?.contact_number ?? null,
+              auto_rescue_helper_token: matched?.token ?? null,
+              auto_rescue_helper_url: matched?.token ? `${origin}/track/${matched.token}` : null,
+              auto_rescue_helper_at: matched?.auto_rescue_at ?? null,
+            }
+          })
+        }
+      }
+    }
+
     return NextResponse.json({
-      data: incidents || [],
+      data: enrichedRows,
       count: count || 0,
       limit,
       offset,

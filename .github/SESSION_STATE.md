@@ -20,25 +20,6 @@ Dashboard: /track/[token] page + /api/track/[token] API created. Push to Vercel 
 Supabase: live_location_sessions active. One permanent token per user.
 Policy: Expiry extends ONLY on emergency trigger, not on 3-min background refresh.
 UI Note: "Location reported" time is phone-upload age; it can be delayed even when page refresh is recent.
-Fix Note: Literal token values like "null" are now sanitized; users token is synced during live upsert.
-New: per-contact helper links (3 unique tokens) generated server-side before SMS dispatch.
-Required SQL: run admin/supabase_helper_links.sql once.
-Update: helper-link API now reuses an existing active/unexpired link for the same contact slot + number.
-
-## Completed This Session
-- [x] STEP 0: SQL — live_location_token column + indexes + RLS policies
-- [x] STEP 1: Prefs.java — setLiveLocationToken/getLiveLocationToken/clearLiveLocationToken
-- [x] STEP 2: SupabaseClient.java — upsertLiveLocation() + fetchLiveLocationToken()
-- [x] STEP 3: SafeSphereService.java — live-location-upsert thread on every refresh
-- [x] STEP 4: EmergencyManager + MainActivity — SMS + share use tracking URL
-- [x] STEP 5: admin/src/app/track/[token]/page.tsx — public Leaflet map page
-- [x] STEP 6: admin/src/app/api/track/[token]/route.ts — public API route
-- [x] STEP 7: admin/src/app/admin/users/[id]/page.tsx — live session card added
-
-## Next Steps
-- [ ] Clean + Rebuild Android in Android Studio — confirm BUILD SUCCESSFUL
-- [ ] Git commit + push develop + main after BUILD SUCCESSFUL
-- [ ] Test: emergency trigger → SMS has tracking URL → open link → map shows
-
-## Start Next Session With Just This:
-"Read SESSION_STATE.md and copilot-instructions.md. I want to [task]. After done update SESSION_STATE, skill QUICK REF, REGISTRY."
+Metrics API: all-time emergency counts enabled; query failures now return 500 instead of zeros.
+Next: Clean + Rebuild Android, then verify SMS tracking URL -> map flow.
+Start next session with: "Read SESSION_STATE.md and copilot-instructions.md. I want to [task]. After done update SESSION_STATE, skill QUICK REF, REGISTRY."

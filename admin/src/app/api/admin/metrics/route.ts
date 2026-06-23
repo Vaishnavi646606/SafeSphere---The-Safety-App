@@ -27,6 +27,64 @@ export async function GET(req: NextRequest) {
 
   const serviceClient = createServiceClient()
 
+  const queryResults = await Promise.all([
+    serviceClient.from('users').select('*', { count: 'exact', head: true }),
+    serviceClient.from('users').select('*', { count: 'exact', head: true }).eq('is_active', true),
+    serviceClient.from('users').select('*', { count: 'exact', head: true }).eq('is_active', false),
+    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }),
+    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).not('primary_contact_called', 'is', null),
+    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).or('primary_contact_answered.eq.true,secondary_contact_answered.eq.true,tertiary_contact_answered.eq.true'),
+    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).gte('triggered_at', todayStart.toISOString()),
+    serviceClient.from('users').select('*', { count: 'exact', head: true }).gte('created_at', since),
+    serviceClient.from('users').select('*', { count: 'exact', head: true }).gte('created_at', prevSince).lt('created_at', prevUntil),
+    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).gte('triggered_at', since),
+    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).gte('triggered_at', prevSince).lt('triggered_at', prevUntil),
+    serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }),
+    serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }).eq('was_real_emergency', true),
+    serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }).eq('was_rescued_or_helped', true),
+    serviceClient
+      .from('emergency_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('resolution_type', 'safe_contact')
+      .ilike('admin_notes', '%[AUTO_RESCUE]%'),
+    serviceClient.from('saved_verifications').select('*', { count: 'exact', head: true }),
+    serviceClient.from('emergency_feedback').select('rating'),
+    serviceClient.from('emergency_events').select('triggered_at'),
+    serviceClient.from('emergency_events').select('trigger_type')
+  ])
+
+  const queryLabels = [
+    'total_users',
+    'active_users',
+    'removed_users',
+    'total_incidents',
+    'contacts_called',
+    'calls_answered',
+    'active_today',
+    'users_current',
+    'users_previous',
+    'incidents_current',
+    'incidents_previous',
+    'feedback_count',
+    'real_emergencies',
+    'users_rescued',
+    'auto_rescues',
+    'verified_rescues',
+    'ratings_raw',
+    'daily_events_raw',
+    'trigger_events_raw'
+  ]
+
+  const failedQuery = queryResults.find((result, index) => {
+    if (!result.error) return false
+    console.error(`GET /api/admin/metrics query failed: ${queryLabels[index]}`, result.error)
+    return true
+  })
+
+  if (failedQuery) {
+    return NextResponse.json({ error: 'Failed to load admin metrics' }, { status: 500 })
+  }
+
   const [
     { count: totalUsers },
     { count: activeUsers },
@@ -47,32 +105,7 @@ export async function GET(req: NextRequest) {
     { data: ratingsRaw },
     { data: dailyEventsRaw },
     { data: triggerEventsRaw }
-  ] = await Promise.all([
-    serviceClient.from('users').select('*', { count: 'exact', head: true }),
-    serviceClient.from('users').select('*', { count: 'exact', head: true }).eq('is_active', true),
-    serviceClient.from('users').select('*', { count: 'exact', head: true }).eq('is_active', false),
-    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).gte('triggered_at', since),
-    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).not('primary_contact_called', 'is', null).gte('triggered_at', since),
-    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).or('primary_contact_answered.eq.true,secondary_contact_answered.eq.true,tertiary_contact_answered.eq.true').gte('triggered_at', since),
-    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).gte('triggered_at', todayStart.toISOString()),
-    serviceClient.from('users').select('*', { count: 'exact', head: true }).gte('created_at', since),
-    serviceClient.from('users').select('*', { count: 'exact', head: true }).gte('created_at', prevSince).lt('created_at', prevUntil),
-    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).gte('triggered_at', since),
-    serviceClient.from('emergency_events').select('*', { count: 'exact', head: true }).gte('triggered_at', prevSince).lt('triggered_at', prevUntil),
-    serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }).gte('submitted_at', since),
-    serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }).eq('was_real_emergency', true).gte('submitted_at', since),
-    serviceClient.from('emergency_feedback').select('*', { count: 'exact', head: true }).eq('was_rescued_or_helped', true).gte('submitted_at', since),
-    serviceClient
-      .from('emergency_events')
-      .select('*', { count: 'exact', head: true })
-      .eq('resolution_type', 'safe_contact')
-      .ilike('admin_notes', '%[AUTO_RESCUE]%')
-      .gte('triggered_at', since),
-    serviceClient.from('saved_verifications').select('*', { count: 'exact', head: true }).gte('verified_at', since),
-    serviceClient.from('emergency_feedback').select('rating').gte('submitted_at', since),
-    serviceClient.from('emergency_events').select('triggered_at').gte('triggered_at', since),
-    serviceClient.from('emergency_events').select('trigger_type').gte('triggered_at', since)
-  ])
+  ] = queryResults
 
   let avgRating = 0
   if (ratingsRaw && ratingsRaw.length > 0) {
